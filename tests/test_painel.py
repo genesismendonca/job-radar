@@ -15,6 +15,7 @@ import pytest
 from painel.gerar_painel import (
     _carregar_status,
     _carregar_vagas,
+    _categoria,
     _PADRAO_PUBLICACAO_ANTIGA,
     gerar_html,
 )
@@ -108,6 +109,81 @@ def test_ordena_mais_recente_primeiro(conn):
     _inserir_vaga(conn, id="nova", encontrada_em="2026-08-20 10:00:00")
     vagas = _carregar_vagas(conn)
     assert [v["id"] for v in vagas] == ["nova", "antiga"]
+
+
+# --------------------------------------------------------------- _categoria
+#
+# Requisito atualizado (20/08): "algumas vagas estão aparecendo na aba
+# internacional, mas são do BR" -- LinkedInIntlScraper busca por PAÍS
+# estrangeiro (LOCATIONS_INTL), mas o filtro nativo de remoto do LinkedIn
+# às vezes devolve vaga clara e exclusivamente brasileira mesmo assim. O
+# campo `perfil` salvo no banco só diz qual PIPELINE achou a vaga, não
+# onde ela é de verdade -- por isso _categoria reextrai o escopo (mesma
+# função usada em produção pro filtro) como double-check, pra qualquer
+# fonte, não só LinkedIn.
+
+def _vaga_base(**over):
+    padrao = dict(
+        perfil="internacional", local="", modalidade="Remoto", mercado_confirmado=False,
+    )
+    padrao.update(over)
+    return padrao
+
+
+def test_categoria_brasil_remoto():
+    assert _categoria(_vaga_base(perfil="brasil", modalidade="Remoto")) == "br-remoto"
+
+
+@pytest.mark.parametrize("modalidade", ["Híbrido", "Presencial"])
+def test_categoria_brasil_hibrido(modalidade):
+    assert _categoria(_vaga_base(perfil="brasil", modalidade=modalidade)) == "br-hibrido"
+
+
+def test_categoria_internacional_mercado_confirmado():
+    assert _categoria(_vaga_base(local="Remote - Spain", mercado_confirmado=True)) == "intl-explicito"
+
+
+def test_categoria_internacional_sem_mercado():
+    assert _categoria(_vaga_base(local="Remote", mercado_confirmado=False)) == "intl-sem-mercado"
+
+
+def test_categoria_reclassifica_vaga_brasileira_achada_pelo_pipeline_internacional():
+    """MEDIDO (primeiro ciclo real, 20/08): "Porto Alegre, Rio Grande do
+    Sul, Brazil" com modalidade=Remoto, perfil=internacional -- claramente
+    uma vaga brasileira, achada só porque o LinkedIn devolveu ela pra uma
+    busca de país estrangeiro. Precisa virar br-remoto, não intl."""
+    vaga = _vaga_base(
+        perfil="internacional", local="Porto Alegre, Rio Grande do Sul, Brazil",
+        modalidade="Remoto", mercado_confirmado=False,
+    )
+    assert _categoria(vaga) == "br-remoto"
+
+
+def test_categoria_nao_reclassifica_vaga_de_mercado_multiplo():
+    """"Remote - Brazil/LATAM" aceita mais gente que só quem mora no
+    Brasil -- não é o mesmo caso de vaga EXCLUSIVAMENTE brasileira, então
+    continua internacional (o double-check só reclassifica quando o
+    escopo resolve só e exatamente pra Brasil)."""
+    vaga = _vaga_base(
+        perfil="internacional", local="Remote - Brazil/LATAM",
+        modalidade="Remoto", mercado_confirmado=True,
+    )
+    assert _categoria(vaga) == "intl-explicito"
+
+
+def test_categoria_double_check_vale_pra_qualquer_fonte():
+    """O double-check não é específico do LinkedIn -- roda pra qualquer
+    vaga perfil=internacional, seja qual for o `site`."""
+    vaga = _vaga_base(
+        perfil="internacional", local="Recife, PE, Brazil", modalidade="Remoto",
+    )
+    assert _categoria(vaga) == "br-remoto"
+
+
+def test_carregar_vagas_preenche_categoria(conn):
+    _inserir_vaga(conn, id="x", perfil="brasil", modalidade="Remoto")
+    vagas = _carregar_vagas(conn)
+    assert vagas[0]["categoria"] == "br-remoto"
 
 
 # --------------------------------------------------------- _carregar_status

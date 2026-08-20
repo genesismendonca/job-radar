@@ -29,6 +29,7 @@ import sqlite3
 from datetime import datetime, timezone
 
 from core.config import DB_PATH, LIMIAR_RELEVANCIA_DESTAQUE
+from core.job import extrair_escopo_remoto
 from core.perfis import PERFIS
 from database.database import iniciar_db
 
@@ -50,6 +51,42 @@ _COLUNAS_VAGA = (
 _PADRAO_PUBLICACAO_ANTIGA = re.compile(r"\b(mes|meses|mês|mêses|ano|anos)\b", re.IGNORECASE)
 
 
+def _categoria(vaga: dict) -> str:
+    """Categoria de exibição do painel — as 4 seções que
+    painel/gerar_painel.py renderiza. Calculada aqui (Python), não em JS,
+    de propósito: reaproveita extrair_escopo_remoto (job.py), a mesma
+    lógica já testada que decide mercado em produção, em vez de duplicar
+    heurística solta no navegador.
+
+    MEDIDO (20/08, primeiro ciclo real do perfil Produto): vaga com local
+    tipo "Porto Alegre, Rio Grande do Sul, Brazil" e modalidade=Remoto
+    aparecia na categoria "internacional" — o campo `perfil` gravado no
+    banco reflete só QUAL PIPELINE achou a vaga (LinkedInIntlScraper busca
+    por PAÍS estrangeiro, mas o próprio LinkedIn às vezes devolve vaga
+    remota brasileira mesmo pesquisando "Spain"/"Mexico" — o filtro
+    nativo de localização não é estrito pra remoto). `perfil` não é
+    garantia de ONDE a vaga é de verdade.
+
+    Por isso todo vaga perfil="internacional" passa por um double-check
+    aqui, não só a que veio do LinkedIn — extrai o escopo de novo a partir
+    de `local`/`modalidade` (funciona pra qualquer fonte, não só uma) e,
+    se o escopo resolver EXCLUSIVAMENTE pra Brasil (nenhum outro país
+    junto — "Remote, Brazil" vira {"Brasil"}, mas "Remote - Brazil/LATAM"
+    vira {"Brasil", "LATAM"} e continua internacional, porque aceita mais
+    gente que só quem mora no Brasil), reclassifica pra "br-remoto" — é
+    uma vaga brasileira de verdade, só achada pelo pipeline errado.
+    """
+    perfil = vaga["perfil"]
+    if perfil == "internacional":
+        escopo = extrair_escopo_remoto(vaga["local"] or "", vaga["modalidade"] or "")
+        if escopo == {"Brasil"}:
+            return "br-remoto"
+        return "intl-explicito" if vaga["mercado_confirmado"] else "intl-sem-mercado"
+    if perfil == "brasil":
+        return "br-remoto" if vaga["modalidade"] == "Remoto" else "br-hibrido"
+    return ""
+
+
 def _carregar_vagas(conn: sqlite3.Connection) -> list[dict]:
     linhas = conn.execute(
         f"SELECT {', '.join(_COLUNAS_VAGA)} FROM vagas_vistas ORDER BY encontrada_em DESC"
@@ -63,6 +100,7 @@ def _carregar_vagas(conn: sqlite3.Connection) -> list[dict]:
         vaga["antiga"] = bool(
             vaga["publicado_em"] and _PADRAO_PUBLICACAO_ANTIGA.search(vaga["publicado_em"])
         )
+        vaga["categoria"] = _categoria(vaga)
         vagas.append(vaga)
     return vagas
 
@@ -168,6 +206,15 @@ a.link-vaga:hover { text-decoration: underline; }
   background: var(--bg-elevado); color: var(--texto); font-size: 13px;
 }
 .controles input[type="search"] { flex: 1; min-width: 180px; }
+.controle-candidatura { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.controle-candidatura select, .controle-candidatura input {
+  padding: 5px 8px; border-radius: 6px; border: 1px solid var(--borda);
+  background: var(--bg); color: var(--texto); font-size: 12px;
+}
+.controle-candidatura select { min-width: 140px; }
+.controle-candidatura input[type="text"] { flex: 1; min-width: 140px; }
+.select-status-tabela { padding: 4px 6px; border-radius: 6px; border: 1px solid var(--borda); background: var(--bg); color: var(--texto); font-size: 12px; }
+.tag-status { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--acento-fraco); color: var(--acento); font-weight: 600; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--borda); }
 th { color: var(--texto-fraco); font-weight: 600; white-space: nowrap; cursor: pointer; user-select: none; }
@@ -191,6 +238,8 @@ footer { text-align: center; color: var(--texto-fraco); font-size: 12px; margin-
   <p class="subtitulo" id="rodape-geracao"></p>
 
   <div class="grade-status" id="status-execucao"></div>
+
+  <section class="cartao" id="secao-candidaturas"></section>
 
   <section class="cartao" id="blocos-ranqueados"></section>
 
@@ -219,6 +268,7 @@ footer { text-align: center; color: var(--texto-fraco); font-size: 12px; margin-
             <th data-col="site">Fonte</th>
             <th data-col="relevancia">Score</th>
             <th data-col="encontrada_em">Encontrada em</th>
+            <th>Candidatura</th>
           </tr>
         </thead>
         <tbody id="corpo-tabela"></tbody>
@@ -262,30 +312,20 @@ footer { text-align: center; color: var(--texto-fraco); font-size: 12px; margin-
   // histórico — mas o histórico continua todo acessível (nada é
   // descartado, só limitado no CARTÃO; a tabela "Todas as vagas" abaixo
   // tem a categoria como filtro e mostra tudo, sem limite).
+  //
+  // A categoria de cada vaga já vem PRONTA de v.categoria (calculada em
+  // painel/gerar_painel.py, ver _categoria — reaproveita o mesmo
+  // extrair_escopo_remoto testado em vez de duplicar heurística aqui em
+  // JS). Este array só carrega o rótulo de exibição de cada chave.
   var CATEGORIAS = [
-    {
-      chave: "intl-explicito", titulo: "Internacional — mercado Brasil/LATAM explícito",
-      filtro: function (v) { return v.perfil === "internacional" && v.mercado_confirmado; },
-    },
-    {
-      chave: "intl-sem-mercado", titulo: "Internacional — sem mercado declarado",
-      filtro: function (v) { return v.perfil === "internacional" && !v.mercado_confirmado; },
-    },
-    {
-      chave: "br-remoto", titulo: "Brasil — Remoto",
-      filtro: function (v) { return v.perfil === "brasil" && v.modalidade === "Remoto"; },
-    },
-    {
-      chave: "br-hibrido", titulo: "Brasil — Híbrido/Presencial (São Paulo)",
-      filtro: function (v) { return v.perfil === "brasil" && v.modalidade !== "Remoto"; },
-    },
+    { chave: "intl-explicito", titulo: "Internacional — mercado Brasil/LATAM explícito" },
+    { chave: "intl-sem-mercado", titulo: "Internacional — sem mercado declarado" },
+    { chave: "br-remoto", titulo: "Brasil — Remoto" },
+    { chave: "br-hibrido", titulo: "Brasil — Híbrido/Presencial (São Paulo)" },
   ];
 
-  function categoriaDaVaga(v) {
-    for (var i = 0; i < CATEGORIAS.length; i++) {
-      if (CATEGORIAS[i].filtro(v)) return CATEGORIAS[i].chave;
-    }
-    return "";
+  function vagasDaCategoria(chave) {
+    return VAGAS.filter(function (v) { return v.categoria === chave; });
   }
 
   function el(tag, props, filhos) {
@@ -315,6 +355,141 @@ footer { text-align: center; color: var(--texto-fraco); font-size: 12px; margin-
 
   function linkSeguro(url) {
     return typeof url === "string" && /^https?:\/\//i.test(url) ? url : null;
+  }
+
+  // ---------------------------------------------------- CANDIDATURAS
+  //
+  // Requisito atualizado (20/08): marcar vaga como "candidatei", com
+  // status e data, e ir evoluindo (1ª entrevista, proposta...). O painel
+  // é HTML estático sem backend nenhum (GitHub Pages só serve arquivo) —
+  // não tem como escrever de volta em data/jobs.db a partir do navegador.
+  // Guardado em localStorage: funciona sem servidor, mas só neste
+  // navegador/dispositivo — não sincroniza com outro aparelho, nem some
+  // se o painel for regenerado (o arquivo muda, o localStorage do
+  // navegador não). Ver aviso no topo da seção "Minhas candidaturas".
+
+  var CHAVE_LOCALSTORAGE = "jobradar_candidaturas_v1";
+
+  var STATUS_OPCOES = [
+    ["", "— não candidatei —"],
+    ["candidatei", "Candidatei-me"],
+    ["triagem", "Triagem / RH"],
+    ["teste", "Teste técnico"],
+    ["entrevista1", "1ª entrevista"],
+    ["entrevista2", "2ª entrevista ou mais"],
+    ["proposta", "Proposta recebida"],
+    ["contratado", "Contratado(a)"],
+    ["rejeitado", "Não avancei"],
+    ["desisti", "Desisti"],
+  ];
+
+  function rotuloStatus(chave) {
+    for (var i = 0; i < STATUS_OPCOES.length; i++) {
+      if (STATUS_OPCOES[i][0] === chave) return STATUS_OPCOES[i][1];
+    }
+    return chave;
+  }
+
+  function carregarCandidaturas() {
+    try {
+      var bruto = localStorage.getItem(CHAVE_LOCALSTORAGE);
+      return bruto ? JSON.parse(bruto) : {};
+    } catch (e) {
+      return {}; // navegador privado/bloqueado: segue sem persistência, não quebra o painel
+    }
+  }
+
+  function salvarCandidaturas() {
+    try { localStorage.setItem(CHAVE_LOCALSTORAGE, JSON.stringify(CANDIDATURAS)); } catch (e) { /* idem acima */ }
+  }
+
+  var CANDIDATURAS = carregarCandidaturas();
+
+  function definirCandidatura(vagaId, status, nota) {
+    if (!status) {
+      delete CANDIDATURAS[vagaId];
+    } else {
+      var existente = CANDIDATURAS[vagaId] || {};
+      CANDIDATURAS[vagaId] = {
+        status: status,
+        nota: nota !== undefined ? nota : (existente.nota || ""),
+        atualizadoEm: new Date().toISOString(),
+      };
+    }
+    salvarCandidaturas();
+    renderCandidaturas();
+  }
+
+  function controleCandidatura(v) {
+    var atual = CANDIDATURAS[v.id] || {};
+    var sel = el("select", {});
+    STATUS_OPCOES.forEach(function (par) {
+      var opt = el("option", { value: par[0], text: par[1] });
+      if (par[0] === (atual.status || "")) opt.setAttribute("selected", "selected");
+      sel.appendChild(opt);
+    });
+    var nota = el("input", { type: "text", placeholder: "Próxima etapa (opcional)", value: atual.nota || "" });
+    sel.addEventListener("change", function () { definirCandidatura(v.id, sel.value, nota.value); });
+    nota.addEventListener("change", function () { if (sel.value) definirCandidatura(v.id, sel.value, nota.value); });
+    return el("div", { class: "controle-candidatura" }, [sel, nota]);
+  }
+
+  // Versão compacta (só status, sem campo de nota) pra caber numa célula
+  // da tabela — a tabela alcança vaga que os blocos não mostram (capados
+  // em MAX_POR_BLOCO), então precisa do próprio jeito de marcar status.
+  function selectStatusCompacto(v) {
+    var atual = CANDIDATURAS[v.id] || {};
+    var sel = el("select", { class: "select-status-tabela" });
+    STATUS_OPCOES.forEach(function (par) {
+      var opt = el("option", { value: par[0], text: par[1] });
+      if (par[0] === (atual.status || "")) opt.setAttribute("selected", "selected");
+      sel.appendChild(opt);
+    });
+    sel.addEventListener("change", function () { definirCandidatura(v.id, sel.value, undefined); });
+    return sel;
+  }
+
+  function renderCandidaturas() {
+    var alvo = document.getElementById("secao-candidaturas");
+    alvo.innerHTML = "";
+    alvo.appendChild(el("h2", { text: "🎯 Minhas candidaturas" }));
+    alvo.appendChild(el("p", {
+      class: "subtitulo",
+      text: "Guardado só neste navegador (localStorage) — não sincroniza entre dispositivos e não fica salvo no repositório. Marque o status em qualquer vaga abaixo.",
+    }));
+
+    var entradas = Object.keys(CANDIDATURAS).map(function (id) {
+      var vaga = VAGAS.filter(function (v) { return v.id === id; })[0];
+      return vaga ? { vaga: vaga, info: CANDIDATURAS[id] } : null;
+    }).filter(Boolean);
+    entradas.sort(function (a, b) { return (b.info.atualizadoEm || "").localeCompare(a.info.atualizadoEm || ""); });
+
+    if (entradas.length === 0) {
+      alvo.appendChild(el("p", { class: "meta", text: "Nenhuma candidatura marcada ainda." }));
+      return;
+    }
+
+    var tabela = el("table", {}, [
+      el("thead", {}, [el("tr", {}, [
+        el("th", { text: "Vaga" }), el("th", { text: "Empresa" }), el("th", { text: "Status" }),
+        el("th", { text: "Próxima etapa" }), el("th", { text: "Atualizado em" }),
+      ])]),
+    ]);
+    var corpo = el("tbody", {});
+    entradas.forEach(function (par) {
+      var v = par.vaga, info = par.info;
+      var url = linkSeguro(v.link);
+      corpo.appendChild(el("tr", {}, [
+        el("td", {}, [url ? el("a", { class: "link-vaga", href: url, target: "_blank", rel: "noopener", text: v.titulo || "(sem título)" })
+                          : el("span", { text: v.titulo || "(sem título)" })]),
+        el("td", { text: v.empresa || "—" }),
+        el("td", {}, [el("span", { class: "tag-status", text: rotuloStatus(info.status) })]),
+        el("td", { text: info.nota || "—" }),
+        el("td", { text: formatarData(info.atualizadoEm) }),
+      ]));
+    });
+    tabela.appendChild(corpo);
+    alvo.appendChild(el("div", { class: "tabela-wrap" }, [tabela]));
   }
 
   // ---------------------------------------------------------- STATUS
@@ -382,6 +557,7 @@ footer { text-align: center; color: var(--texto-fraco); font-size: 12px; margin-
     if (url) {
       filhos.push(el("a", { class: "link-vaga", href: url, target: "_blank", rel: "noopener", text: "Ver vaga →" }));
     }
+    filhos.push(controleCandidatura(v));
     return el("div", { class: "vaga" }, filhos);
   }
 
@@ -394,7 +570,7 @@ footer { text-align: center; color: var(--texto-fraco); font-size: 12px; margin-
   }
 
   function renderBloco(categoria) {
-    var todasDaCategoria = VAGAS.filter(categoria.filtro);
+    var todasDaCategoria = vagasDaCategoria(categoria.chave);
     var hoje = ordenarPorMatch(todasDaCategoria.filter(function (v) { return ehHoje(v.encontrada_em); }));
     var historico = ordenarPorMatch(todasDaCategoria.filter(function (v) { return !ehHoje(v.encontrada_em); }));
 
@@ -466,7 +642,7 @@ footer { text-align: center; color: var(--texto-fraco); font-size: 12px; margin-
     var modalidade = document.getElementById("filtro-modalidade").value;
 
     return VAGAS.filter(function (v) {
-      if (categoria && categoriaDaVaga(v) !== categoria) return false;
+      if (categoria && v.categoria !== categoria) return false;
       if (perfil && v.perfil !== perfil) return false;
       if (site && v.site !== site) return false;
       if (modalidade && v.modalidade !== modalidade) return false;
@@ -509,6 +685,7 @@ footer { text-align: center; color: var(--texto-fraco); font-size: 12px; margin-
         el("td", { text: v.site || "—" }),
         el("td", { text: String(v.relevancia) }),
         el("td", { text: formatarData(v.encontrada_em) }),
+        el("td", {}, [selectStatusCompacto(v)]),
       ]);
       corpo.appendChild(linha);
     });
@@ -566,6 +743,7 @@ footer { text-align: center; color: var(--texto-fraco); font-size: 12px; margin-
   }
 
   renderStatus();
+  renderCandidaturas();
   renderBlocos();
   popularSelects();
   religarControles();
