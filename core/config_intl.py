@@ -5,11 +5,10 @@
 # keywords em português do JobRadar original a servir dois propósitos
 # diferentes ao mesmo tempo, deixando os dois mais frágeis.
 #
-# Credenciais do Telegram e caminho do banco são os MESMOS do projeto
-# principal (reaproveita o bot já configurado, e o dedup por link no mesmo
-# jobs.db não tem risco de colisão — o id é hash do link, e vaga
+# Caminho do banco é o MESMO do projeto principal (o dedup por link no
+# mesmo jobs.db não tem risco de colisão — o id é hash do link, e vaga
 # internacional nunca vai ter o mesmo link de uma vaga brasileira).
-from core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, DB_PATH, CIDADES_EUROPA_IBERICA  # noqa: F401
+from core.config import DB_PATH, CIDADES_EUROPA_IBERICA  # noqa: F401
 
 # Requisito atualizado pela usuaria (20/08): cargo passou a ser só em
 # inglês/português — espanhol saiu (removida a nomenclatura em espanhol

@@ -81,7 +81,7 @@ class DefinicaoScraper:
 @dataclass
 class Perfil:
     chave: str  # "brasil" / "internacional" — valor do --perfil e sufixo de chave em metadados
-    nome: str  # nome de exibição nos logs/Telegram, ex: "Internacional"
+    nome: str  # nome de exibição nos logs/painel, ex: "Internacional"
     palavras_monitoradas: list[str]
     paises_pesquisados: list[str] | None  # só o perfil internacional imprime isso no banner
     regras: RegrasFiltro

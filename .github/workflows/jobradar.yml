@@ -40,9 +40,6 @@ jobs:
           python -m playwright install --with-deps chromium
 
       - name: Rodar JobRadar (um ciclo de cada perfil)
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         # Antes disso só o perfil Brasil rodava aqui — main_intl.py existia
         # no repositório mas nunca foi chamado pelo workflow, então o
         # pipeline internacional nunca rodou de verdade em produção. Agora é
@@ -50,19 +47,33 @@ jobs:
         # dois rodam na mesma execução/commit, um após o outro.
         run: python main.py --perfil brasil internacional --once
 
-      - name: Salvar vagas já vistas (evita notificação duplicada)
+      - name: Gerar painel
+        # Requisito atualizado (20/08): a saída deixou de ser Telegram (push)
+        # e passou a ser um painel estático publicado no GitHub Pages (pull)
+        # — ver painel/gerar_painel.py. Roda logo depois do ciclo de busca,
+        # a partir do MESMO data/jobs.db que acabou de ser atualizado, e o
+        # docs/index.html resultante é commitado junto no passo seguinte.
+        run: python -m painel.gerar_painel
+
+      - name: Salvar vagas já vistas e painel (evita notificação duplicada)
         run: |
           git config user.name "jobradar-bot"
           git config user.email "jobradar-bot@users.noreply.github.com"
 
-          # O banco produzido por ESTA execução, guardado fora da árvore do
-          # repositório. É a única coisa deste run que sobrevive ao passo
-          # abaixo — todo o resto é descartado e retomado do GitHub.
+          # O banco e o painel produzidos por ESTA execução, guardados fora
+          # da árvore do repositório. São a única coisa deste run que
+          # sobrevive ao passo abaixo — todo o resto é descartado e retomado
+          # do GitHub.
           if [ ! -f data/jobs.db ]; then
             echo "data/jobs.db não existe ao fim do ciclo — nada a salvar."
             exit 1
           fi
+          if [ ! -f docs/index.html ]; then
+            echo "docs/index.html não existe ao fim do ciclo — nada a salvar."
+            exit 1
+          fi
           cp data/jobs.db "${RUNNER_TEMP:-/tmp}/jobs.db"
+          cp docs/index.html "${RUNNER_TEMP:-/tmp}/index.html"
 
           # MEDIDO (18/08): este passo usava
           #
@@ -83,12 +94,13 @@ jobs:
           #
           # O robô não tem motivo NENHUM pra escrever arquivo de código. Em
           # vez de reaplicar commits em cima do estado remoto, ele agora
-          # ADOTA o estado remoto inteiro e recoloca só o banco por cima.
-          # A diferença importa: reaplicar commit pode trazer junto qualquer
-          # coisa que estava naquele commit; recolocar um arquivo só não
-          # pode. Qualquer commit gerado aqui contém data/jobs.db e mais
-          # nada — verificado em simulação com divergência máxima (duas
-          # correções de código + reescrita de histórico ao mesmo tempo).
+          # ADOTA o estado remoto inteiro e recoloca só o banco (e o painel,
+          # que é gerado A PARTIR do banco) por cima. A diferença importa:
+          # reaplicar commit pode trazer junto qualquer coisa que estava
+          # naquele commit; recolocar arquivo por arquivo não pode. Qualquer
+          # commit gerado aqui contém só data/jobs.db e docs/index.html —
+          # verificado em simulação com divergência máxima (duas correções
+          # de código + reescrita de histórico ao mesmo tempo).
           #
           # Efeito colateral bom: se alguém enviar correção de código no meio
           # de um ciclo, o robô passa a INCORPORAR essa correção em vez de
@@ -99,14 +111,16 @@ jobs:
             git reset --hard origin/main
 
             cp "${RUNNER_TEMP:-/tmp}/jobs.db" data/jobs.db
-            git add data/jobs.db
+            mkdir -p docs
+            cp "${RUNNER_TEMP:-/tmp}/index.html" docs/index.html
+            git add data/jobs.db docs/index.html
 
             if git diff --cached --quiet; then
               echo "Nada novo pra commitar."
               exit 0
             fi
 
-            git commit -m "chore: atualiza vagas vistas [skip ci]"
+            git commit -m "chore: atualiza vagas vistas e painel [skip ci]"
 
             if git push; then
               exit 0

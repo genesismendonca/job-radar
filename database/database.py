@@ -73,37 +73,32 @@ def _garantir_coluna_modalidade(conn):
         conn.execute("ALTER TABLE vagas_vistas ADD COLUMN modalidade TEXT")
 
 
-def _garantir_colunas_digest(conn):
-    """Migração leve pro digest ranqueado (ver main.py/_enviar_digest_diario
-    e notifier/telegram.py/montar_digest): vaga com relevancia abaixo do
-    limiar não notifica na hora, fica marcada digest_pendente=1 até entrar
-    num digest enviado com sucesso — linha antiga (antes desta coluna
-    existir) fica com digest_pendente NULL, que o WHERE digest_pendente = 1
-    do digest simplesmente ignora (comportamento correto: vaga antiga já
-    foi tratada de um jeito ou de outro antes desse recurso existir).
-
-    `perfil`: sem isso não dá pra saber de qual perfil (brasil/
-    internacional) veio cada linha pendente — o digest é por perfil, igual
-    heartbeat e alerta de saúde já são. `exploratoria`: só pra render (ícone
-    diferente na lista), não afeta a lógica de fila.
+def _garantir_colunas_relevancia(conn):
+    """Migração leve pro score de relevância (ver Job.pontuar_relevancia em
+    job.py) e o que o painel estático (painel/gerar_painel.py) precisa pra
+    ranquear e agrupar: `relevancia` ordena vaga recente por relevância;
+    `perfil` (brasil/internacional) separa métrica por perfil; `motivo`
+    (Job.motivo_aprovacao) explica no painel por que a vaga passou no
+    filtro; `exploratoria` distingue vaga achada pelo eixo secundário
+    (Ibéria) — só pra render diferente, não muda nenhuma regra.
     """
     colunas = [linha[1] for linha in conn.execute("PRAGMA table_info(vagas_vistas)")]
     if "relevancia" not in colunas:
         conn.execute("ALTER TABLE vagas_vistas ADD COLUMN relevancia INTEGER")
     if "perfil" not in colunas:
         conn.execute("ALTER TABLE vagas_vistas ADD COLUMN perfil TEXT")
-    if "digest_pendente" not in colunas:
-        conn.execute("ALTER TABLE vagas_vistas ADD COLUMN digest_pendente INTEGER")
+    if "motivo" not in colunas:
+        conn.execute("ALTER TABLE vagas_vistas ADD COLUMN motivo TEXT")
     if "exploratoria" not in colunas:
         conn.execute("ALTER TABLE vagas_vistas ADD COLUMN exploratoria INTEGER")
 
 
 def _garantir_coluna_situacao(conn):
     """Migração leve: a tabela tinha 10 colunas e nenhuma dizia o que
-    aconteceu DEPOIS de notificada — candidatou, descartou, chamou pra
-    entrevista. O sistema encontra e notifica; o resto do funil (metade do
+    aconteceu DEPOIS de encontrada — candidatou, descartou, chamou pra
+    entrevista. O sistema encontra e salva; o resto do funil (metade do
     trabalho de procurar vaga) ficava sem registro nenhum, só na cabeça de
-    quem lê o Telegram.
+    quem olha o painel.
 
     Valor livre (não é ENUM/CHECK) de propósito — 'nova' é só o ponto de
     partida, o vocabulário real (candidatei/descartei/entrevista/proposta...)
@@ -117,25 +112,6 @@ def _garantir_coluna_situacao(conn):
         conn.execute("ALTER TABLE vagas_vistas ADD COLUMN situacao TEXT")
 
     conn.execute("UPDATE vagas_vistas SET situacao = 'nova' WHERE situacao IS NULL")
-
-
-def _garantir_coluna_feedback(conn):
-    """Migração leve: reação 👍/👎 no Telegram (botão inline, ver
-    notifier/telegram.py) grava aqui se a vaga notificada era boa ou era
-    ruído — sinal que hoje não existe em lugar nenhum. Sem isso, ajustar
-    KEYWORDS_CARGO_AMBIGUO/FERRAMENTAS_TITULO/TERMOS_BUSCA continua sendo
-    intuição de quem lê o log, do mesmo jeito que os bugs de precisão desta
-    base sempre nasceram.
-
-    Diferente de situacao (que sempre tem valor, default 'nova'), feedback
-    fica NULL até alguém de fato reagir — NULL aqui significa "sem reação
-    ainda", um estado real e distinto de "positivo"/"negativo", não um
-    buraco de migração pra preencher. Por isso não tem backfill: as 780
-    linhas antigas continuam NULL até o usuário reagir (ou não) de agora
-    em diante — não dá pra inferir reação passada que nunca aconteceu."""
-    colunas = [linha[1] for linha in conn.execute("PRAGMA table_info(vagas_vistas)")]
-    if "feedback" not in colunas:
-        conn.execute("ALTER TABLE vagas_vistas ADD COLUMN feedback TEXT")
 
 
 class BancoVazioSuspeito(RuntimeError):
@@ -165,20 +141,20 @@ def iniciar_db():
         _garantir_coluna_chave_secundaria(conn)
         _garantir_coluna_publicado_em(conn)
         _garantir_coluna_modalidade(conn)
-        _garantir_colunas_digest(conn)
+        _garantir_colunas_relevancia(conn)
         _garantir_coluna_situacao(conn)
-        _garantir_coluna_feedback(conn)
         conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_vagas_digest_pendente "
-            "ON vagas_vistas (perfil, digest_pendente)"
+            "CREATE INDEX IF NOT EXISTS idx_vagas_perfil_encontrada_em "
+            "ON vagas_vistas (perfil, encontrada_em)"
         )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_vagas_chave_secundaria "
             "ON vagas_vistas (chave_secundaria)"
         )
-        # Tabela chave/valor genérica — usada hoje só pra guardar a data do
-        # último heartbeat diário (ver notifier/telegram.py e main.py), mas
-        # serve pra qualquer estado simples que precise sobreviver entre
+        # Tabela chave/valor genérica — usada hoje pra guardar o status da
+        # última execução por perfil (ver main.py/_registrar_status_execucao,
+        # lido por painel/gerar_painel.py) e o offset do rodízio de termos,
+        # mas serve pra qualquer estado simples que precise sobreviver entre
         # ciclos sem virar coluna nova em vagas_vistas.
         conn.execute("""
             CREATE TABLE IF NOT EXISTS metadados (
@@ -235,26 +211,23 @@ def definir_metadado(chave: str, valor: str):
         )
 
 
-def salvar_vaga(job, perfil_chave: str = "", digest_pendente: bool = False, exploratoria: bool = False):
-    """`digest_pendente=True` marca a vaga como ainda não notificada —
-    entrou na fila do digest diário (ver _enviar_digest_diario em main.py)
-    em vez de mandar mensagem individual na hora, porque a relevância ficou
-    abaixo do limiar. `perfil_chave` é o que permite o digest buscar só as
-    pendentes DESSE perfil (ver obter_vagas_pendentes_digest) — sem isso,
-    rodar brasil+internacional na mesma execução misturaria a fila dos
-    dois."""
+def salvar_vaga(job, perfil_chave: str = "", exploratoria: bool = False):
+    """`perfil_chave` é o que permite o painel (ver painel/gerar_painel.py)
+    separar vaga do perfil Brasil da do Internacional. `exploratoria` marca
+    vaga achada pelo eixo secundário (Ibéria) — só afeta como o painel
+    rotula a linha, não muda nenhuma regra de filtro."""
     with _conectar() as conn:
         conn.execute(
             """
             INSERT OR IGNORE INTO vagas_vistas
                 (id, titulo, empresa, local, link, site, chave_secundaria, publicado_em,
-                 modalidade, relevancia, perfil, digest_pendente, exploratoria, situacao)
+                 modalidade, relevancia, perfil, motivo, exploratoria, situacao)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 job.id, job.titulo, job.empresa, job.local, job.link, job.site,
                 job.chave_secundaria, job.publicado_em, job.modalidade,
-                job.relevancia, perfil_chave, int(digest_pendente), int(exploratoria), "nova",
+                job.relevancia, perfil_chave, job.motivo, int(exploratoria), "nova",
             ),
         )
 
@@ -263,56 +236,10 @@ def definir_situacao(id_ou_link: str, situacao: str):
     """Atualiza a situação de UMA vaga (nova/candidatei/descartei/
     entrevista/o que quiser — valor livre, ver _garantir_coluna_situacao).
     Aceita id (hash usado como chave primária) ou link exato — o link é o
-    que sobra de mais fácil de copiar da notificação do Telegram, então
-    aceitar os dois evita ter que ir atrás do id manualmente."""
+    que sobra de mais fácil de copiar do painel, então aceitar os dois
+    evita ter que ir atrás do id manualmente."""
     with _conectar() as conn:
         conn.execute(
             "UPDATE vagas_vistas SET situacao = ? WHERE id = ? OR link = ?",
             (situacao, id_ou_link, id_ou_link),
-        )
-
-
-def definir_feedback(job_id: str, feedback: str):
-    """Grava a reação 👍/👎 do botão inline (ver processar_feedback_pendente
-    em notifier/telegram.py) — 'positivo'/'negativo'. Só por id (não por
-    link, diferente de definir_situacao): o callback_data do botão sempre
-    carrega o id, nunca o link inteiro (custaria mais dos 64 bytes que o
-    Telegram permite em callback_data)."""
-    with _conectar() as conn:
-        conn.execute(
-            "UPDATE vagas_vistas SET feedback = ? WHERE id = ?",
-            (feedback, job_id),
-        )
-
-
-def obter_vagas_pendentes_digest(perfil_chave: str) -> list[tuple]:
-    """Vagas salvas com digest_pendente=1 pra esse perfil, da mais
-    relevante pra menos — ver _enviar_digest_diario em main.py. Pode
-    acumular de mais de um ciclo (a cada 3h) até bater o horário do envio,
-    e também sobrevive se o envio de um dia falhar (Telegram fora do ar):
-    fica pendente e entra no digest seguinte, nunca é descartada."""
-    with _conectar() as conn:
-        cursor = conn.execute(
-            """
-            SELECT titulo, empresa, link, relevancia, exploratoria
-            FROM vagas_vistas
-            WHERE perfil = ? AND digest_pendente = 1
-            ORDER BY relevancia DESC, encontrada_em ASC
-            """,
-            (perfil_chave,),
-        )
-        return cursor.fetchall()
-
-
-def marcar_digest_enviado(perfil_chave: str):
-    """Só chamar depois que TODAS as partes do digest confirmarem envio
-    (ver enviar_digest em notifier/telegram.py) — se qualquer parte falhar,
-    não limpa nada, pra não perder vaga: fica tudo pendente e tenta nas
-    partes de novo no próximo envio, mesmo que isso duplique alguma que já
-    tinha saído com sucesso numa parte anterior. Duplicar é aceitável;
-    perder não."""
-    with _conectar() as conn:
-        conn.execute(
-            "UPDATE vagas_vistas SET digest_pendente = 0 WHERE perfil = ? AND digest_pendente = 1",
-            (perfil_chave,),
         )
