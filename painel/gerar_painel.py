@@ -52,7 +52,7 @@ _PADRAO_PUBLICACAO_ANTIGA = re.compile(r"\b(mes|meses|mês|mêses|ano|anos)\b", 
 
 
 def _categoria(vaga: dict) -> str:
-    """Categoria de exibição do painel — as 4 seções que
+    """Categoria de exibição do painel — as 5 seções que
     painel/gerar_painel.py renderiza. Calculada aqui (Python), não em JS,
     de propósito: reaproveita extrair_escopo_remoto (job.py), a mesma
     lógica já testada que decide mercado em produção, em vez de duplicar
@@ -83,7 +83,19 @@ def _categoria(vaga: dict) -> str:
             return "br-remoto"
         return "intl-explicito" if vaga["mercado_confirmado"] else "intl-sem-mercado"
     if perfil == "brasil":
-        return "br-remoto" if vaga["modalidade"] == "Remoto" else "br-hibrido"
+        # Requisito atualizado (20/08): Híbrido e Presencial deixaram de
+        # ser um bloco só — são as duas únicas modalidades físicas que
+        # CIDADES aceita (ambas restritas a São Paulo, ver config.py), mas
+        # já saem separadas na fonte na maioria dos casos, então não faz
+        # sentido misturar na exibição. `modalidade` vazia (~13% dos
+        # matches físicos no histórico — fonte não declarou nem Híbrido
+        # nem Presencial) cai em "Presencial": é a leitura mais literal de
+        # "sem sinal de regime misto", ainda que sem confirmação da fonte.
+        if vaga["modalidade"] == "Remoto":
+            return "br-remoto"
+        if vaga["modalidade"] == "Híbrido":
+            return "br-hibrido"
+        return "br-presencial"
     return ""
 
 
@@ -307,7 +319,7 @@ footer { text-align: center; color: var(--texto-fraco); font-size: 12px; margin-
   var LINHAS_POR_PAGINA = 25;
   var MAX_POR_BLOCO = 40; // cartões renderizados por bloco (hoje + histórico); o resto fica na tabela completa
 
-  // Requisito atualizado (20/08): 4 blocos fixos, cada um ranqueado por
+  // Requisito atualizado (20/08): 5 blocos fixos, cada um ranqueado por
   // relevância (maior match primeiro), "hoje" separado do resto do
   // histórico — mas o histórico continua todo acessível (nada é
   // descartado, só limitado no CARTÃO; a tabela "Todas as vagas" abaixo
@@ -321,7 +333,8 @@ footer { text-align: center; color: var(--texto-fraco); font-size: 12px; margin-
     { chave: "intl-explicito", titulo: "Internacional — mercado Brasil/LATAM explícito" },
     { chave: "intl-sem-mercado", titulo: "Internacional — sem mercado declarado" },
     { chave: "br-remoto", titulo: "Brasil — Remoto" },
-    { chave: "br-hibrido", titulo: "Brasil — Híbrido/Presencial (São Paulo)" },
+    { chave: "br-hibrido", titulo: "Brasil — Híbrido (São Paulo)" },
+    { chave: "br-presencial", titulo: "Brasil — Presencial (São Paulo)" },
   ];
 
   function vagasDaCategoria(chave) {

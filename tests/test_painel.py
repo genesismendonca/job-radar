@@ -134,9 +134,19 @@ def test_categoria_brasil_remoto():
     assert _categoria(_vaga_base(perfil="brasil", modalidade="Remoto")) == "br-remoto"
 
 
-@pytest.mark.parametrize("modalidade", ["Híbrido", "Presencial"])
-def test_categoria_brasil_hibrido(modalidade):
-    assert _categoria(_vaga_base(perfil="brasil", modalidade=modalidade)) == "br-hibrido"
+def test_categoria_brasil_hibrido():
+    assert _categoria(_vaga_base(perfil="brasil", modalidade="Híbrido")) == "br-hibrido"
+
+
+def test_categoria_brasil_presencial():
+    assert _categoria(_vaga_base(perfil="brasil", modalidade="Presencial")) == "br-presencial"
+
+
+def test_categoria_brasil_modalidade_vazia_vira_presencial():
+    """Fonte não declarou Híbrido nem Presencial -- leitura mais literal
+    de "sem sinal de regime misto" (~13% dos matches físicos no
+    histórico caem nesse caso)."""
+    assert _categoria(_vaga_base(perfil="brasil", modalidade="")) == "br-presencial"
 
 
 def test_categoria_internacional_mercado_confirmado():
