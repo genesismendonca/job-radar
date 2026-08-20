@@ -148,30 +148,30 @@ CASOS_COMBINA_COM = [
     # Anti-regressão crítica (mesmo caso do teste de escopo, agora
     # end-to-end): vaga americana sem sigla de estado tem que ser barrada
     # no perfil internacional (que só aceita Brasil/LATAM/Ibéria).
-    ("seattle-barrada-perfil-intl", "Senior Data Analyst", "Greater Seattle Area", "Remoto", PERFIL_INTL, False),
+    ("seattle-barrada-perfil-intl", "Senior Product Manager", "Greater Seattle Area", "Remoto", PERFIL_INTL, False),
     # Requisito atualizado (20/08): remota SEM mercado declarado passa
     # direto, sem precisar de sinal de idioma/região no título — não há
     # base nenhuma pra rejeitar (o gate de idioma no título saiu).
-    ("spanish-speaking-sem-mercado-passa", "Spanish Speaking Data Analyst", "Remote", "Remoto", PERFIL_INTL, True),
-    ("data-analyst-latam-passa", "Data Analyst LATAM", "Remote", "Remoto", PERFIL_INTL, True),
-    ("sem-idioma-sem-mercado-tambem-passa", "Senior Data Analyst", "Remote", "Remoto", PERFIL_INTL, True),
+    ("spanish-speaking-sem-mercado-passa", "Spanish Speaking Product Manager", "Remote", "Remoto", PERFIL_INTL, True),
+    ("product-manager-latam-passa", "Product Manager LATAM", "Remote", "Remoto", PERFIL_INTL, True),
+    ("sem-idioma-sem-mercado-tambem-passa", "Senior Product Manager", "Remote", "Remoto", PERFIL_INTL, True),
     # Mercado CONFIRMADO no texto continua decidindo sozinho — aceito passa,
     # o resto é rejeitado independente do título.
-    ("mercado-aceito-passa", "Senior Data Analyst", "Remote - Espanha", "Remoto", PERFIL_INTL, True),
-    ("mercado-nao-aceito-barrado", "Senior Data Analyst", "Remote - Germany", "Remoto", PERFIL_INTL, False),
+    ("mercado-aceito-passa", "Senior Product Manager", "Remote - Espanha", "Remoto", PERFIL_INTL, True),
+    ("mercado-nao-aceito-barrado", "Senior Product Manager", "Remote - Germany", "Remoto", PERFIL_INTL, False),
 
     # Perfil Brasil: cargo e cidade são checados em campos separados
     # (título vs. local) — cidade fora da lista aceita barra mesmo com
     # cargo batendo. Requisito atualizado (20/08): só São Paulo vale pra
     # híbrido/presencial (antes era um conjunto de cidades do Nordeste).
-    ("cidade-fora-da-lista-barrada", "Analista de Dados", "Nova York", "Presencial", PERFIL_BR, False),
+    ("cidade-fora-da-lista-barrada", "Product Manager", "Nova York", "Presencial", PERFIL_BR, False),
     ("cargo-fora-do-escopo-barrado", "Vendedor Externo", "São Paulo, SP", "Presencial", PERFIL_BR, False),
-    ("cargo-forte-cidade-aceita-passa", "Analista de Dados Pleno", "São Paulo, SP", "Presencial", PERFIL_BR, True),
-    # keywords_ambiguo (ex: "Business Analyst") só conta com qualificador
-    # de dados junto no título — sozinho é ruído de outra área (RH,
-    # finanças).
-    ("cargo-ambiguo-sem-qualificador-barrado", "Business Analyst", "São Paulo, SP", "Presencial", PERFIL_BR, False),
-    ("cargo-ambiguo-com-qualificador-passa", "Business Analyst com SQL", "São Paulo, SP", "Presencial", PERFIL_BR, True),
+    ("cargo-forte-cidade-aceita-passa", "Product Manager Pleno", "São Paulo, SP", "Presencial", PERFIL_BR, True),
+    # Requisito atualizado (20/08, pivô Dados/BI → Produto): sem eixo de
+    # cargo ambíguo neste perfil (KEYWORDS_CARGO_AMBIGUO vazio) — sigla
+    # solta ("PM"/"PO") nunca aprova, mesmo com "produto" junto no título.
+    ("sigla-solta-nao-aprova-mesmo-com-qualificador", "PM Sênior de Produto", "São Paulo, SP", "Presencial", PERFIL_BR, False),
+    ("product-owner-por_extenso_passa", "Product Owner com foco em Growth", "São Paulo, SP", "Presencial", PERFIL_BR, True),
 ]
 
 

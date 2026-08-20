@@ -149,6 +149,16 @@ _REGRAS_BR_IBERIA = RegrasFiltro(
 # que foi medido à parte (Gupy ~2,6%); Catho, GeekHunter e 99Jobs ficam
 # abaixo de 1%.
 #
+# AVISO (pivô de cargo 20/08, Dados/BI → Produto): todo % de rendimento
+# comentado nesta lista de fontes (aqui e abaixo, ex: LinkedIn ~8,5%,
+# Sólides ~1,1%, Senior 0,3%) foi medido buscando "analista de dados"/
+# "business intelligence" — não foi remedido com os termos novos
+# (KEYWORDS_CARGO_FORTE em config.py, ver requisito atualizado). A escolha
+# de QUAIS fontes entram (Trampos fora, 99Jobs dentro etc.) tende a
+# continuar válida — é sobre capacidade técnica do site, não sobre o termo
+# buscado — mas o número em si é histórico, não uma promessa de rendimento
+# pra vaga de Produto. Vale remedir depois de rodar um tempo em produção.
+#
 # WeWorkRemotelyIntlScraper reaproveitado aqui (não duplicado): é agregador
 # de vaga 100% remota que cobre o mercado "remoto internacional" que
 # nenhuma das 8 fontes brasileiras alcança — mesmo scraper usado no perfil

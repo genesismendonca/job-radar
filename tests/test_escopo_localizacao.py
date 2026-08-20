@@ -114,7 +114,7 @@ from core.job import Job                     # noqa: E402
 from core.perfis import PERFIL_BR, PERFIL_INTL  # noqa: E402
 
 
-def _vaga(local, modalidade, titulo="Analista de Dados"):
+def _vaga(local, modalidade, titulo="Product Manager"):
     return Job(
         titulo=titulo, empresa="Empresa Teste", local=local,
         link=f"https://exemplo.com/{abs(hash((local, modalidade, titulo)))}",
@@ -155,5 +155,5 @@ def test_titulo_nunca_serve_de_sinal_de_local():
     """Bug original desta base: titulo e local eram concatenados, entao
     vaga americana com "Hybrid Remote" no TITULO batia "remot" e passava
     como remota. O fallback le SO o campo local."""
-    vaga = _vaga("Bloomington, IN", "", titulo="Data Analyst (Hybrid Remote)")
+    vaga = _vaga("Bloomington, IN", "", titulo="Product Manager (Hybrid Remote)")
     assert not vaga.combina_com(PERFIL_BR.regras)
