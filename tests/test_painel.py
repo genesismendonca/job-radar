@@ -27,7 +27,8 @@ def conn():
         CREATE TABLE vagas_vistas (
             id TEXT PRIMARY KEY, titulo TEXT, empresa TEXT, local TEXT, link TEXT,
             site TEXT, perfil TEXT, modalidade TEXT, relevancia INTEGER, motivo TEXT,
-            exploratoria INTEGER, situacao TEXT, encontrada_em TEXT, publicado_em TEXT
+            exploratoria INTEGER, situacao TEXT, encontrada_em TEXT, publicado_em TEXT,
+            mercado_confirmado INTEGER
         )
     """)
     conexao.execute("CREATE TABLE metadados (chave TEXT PRIMARY KEY, valor TEXT)")
@@ -37,18 +38,20 @@ def conn():
 
 def _inserir_vaga(conn, **campos):
     padrao = dict(
-        id="id1", titulo="Analista de Dados", empresa="Empresa", local="São Paulo",
+        id="id1", titulo="Product Manager", empresa="Empresa", local="São Paulo",
         link="https://exemplo.com/vaga", site="LinkedIn", perfil="brasil",
         modalidade="Remoto", relevancia=7, motivo="Cargo forte", exploratoria=0,
         situacao="nova", encontrada_em="2026-08-20 10:00:00", publicado_em="",
+        mercado_confirmado=0,
     )
     padrao.update(campos)
     conn.execute(
         """INSERT INTO vagas_vistas
            (id, titulo, empresa, local, link, site, perfil, modalidade, relevancia,
-            motivo, exploratoria, situacao, encontrada_em, publicado_em)
+            motivo, exploratoria, situacao, encontrada_em, publicado_em, mercado_confirmado)
            VALUES (:id, :titulo, :empresa, :local, :link, :site, :perfil, :modalidade,
-                   :relevancia, :motivo, :exploratoria, :situacao, :encontrada_em, :publicado_em)""",
+                   :relevancia, :motivo, :exploratoria, :situacao, :encontrada_em, :publicado_em,
+                   :mercado_confirmado)""",
         padrao,
     )
     conn.commit()
@@ -61,7 +64,7 @@ def test_carrega_vaga_com_campos_basicos(conn):
     vagas = _carregar_vagas(conn)
     assert len(vagas) == 1
     assert vagas[0]["id"] == "abc"
-    assert vagas[0]["titulo"] == "Analista de Dados"
+    assert vagas[0]["titulo"] == "Product Manager"
     assert vagas[0]["exploratoria"] is False
 
 
@@ -69,6 +72,16 @@ def test_exploratoria_vira_booleano(conn):
     _inserir_vaga(conn, id="x", exploratoria=1)
     vagas = _carregar_vagas(conn)
     assert vagas[0]["exploratoria"] is True
+
+
+def test_mercado_confirmado_vira_booleano(conn):
+    _inserir_vaga(conn, id="x", mercado_confirmado=1)
+    vagas = _carregar_vagas(conn)
+    assert vagas[0]["mercado_confirmado"] is True
+
+    _inserir_vaga(conn, id="y", mercado_confirmado=0)
+    vagas = _carregar_vagas(conn)
+    assert [v for v in vagas if v["id"] == "y"][0]["mercado_confirmado"] is False
 
 
 def test_relevancia_nula_vira_zero(conn):

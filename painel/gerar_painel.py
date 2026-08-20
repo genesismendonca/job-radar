@@ -38,7 +38,7 @@ SAIDA_HTML = os.path.join(_RAIZ_PROJETO, "docs", "index.html")
 _COLUNAS_VAGA = (
     "id", "titulo", "empresa", "local", "link", "site", "perfil",
     "modalidade", "relevancia", "motivo", "exploratoria", "situacao",
-    "encontrada_em", "publicado_em",
+    "encontrada_em", "publicado_em", "mercado_confirmado",
 )
 
 # Mesmo critério de Job.publicacao_antiga (job.py) — não importa a função
@@ -58,6 +58,7 @@ def _carregar_vagas(conn: sqlite3.Connection) -> list[dict]:
     for linha in linhas:
         vaga = dict(zip(_COLUNAS_VAGA, linha))
         vaga["exploratoria"] = bool(vaga["exploratoria"])
+        vaga["mercado_confirmado"] = bool(vaga["mercado_confirmado"])
         vaga["relevancia"] = vaga["relevancia"] if vaga["relevancia"] is not None else 0
         vaga["antiga"] = bool(
             vaga["publicado_em"] and _PADRAO_PUBLICACAO_ANTIGA.search(vaga["publicado_em"])
@@ -144,12 +145,12 @@ h2 { font-size: 17px; margin: 0 0 12px; }
 .pill.ok { background: color-mix(in srgb, var(--sucesso) 15%, transparent); color: var(--sucesso); }
 .pill.alerta { background: color-mix(in srgb, var(--erro) 15%, transparent); color: var(--erro); }
 .pill.neutro { background: var(--acento-fraco); color: var(--acento); }
-.abas { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
-.aba {
-  border: 1px solid var(--borda); background: var(--bg-elevado); color: var(--texto);
-  padding: 6px 14px; border-radius: 999px; font-size: 13px; cursor: pointer;
-}
-.aba.ativa { background: var(--acento); border-color: var(--acento); color: #fff; }
+.bloco { margin-bottom: 28px; }
+.bloco:last-child { margin-bottom: 0; }
+.bloco-cabecalho { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.bloco-cabecalho h3 { font-size: 15px; margin: 0; }
+.rotulo-grupo { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--texto-fraco); margin: 14px 0 8px; }
+.rotulo-grupo:first-child { margin-top: 0; }
 .vagas-grade { display: grid; gap: 10px; }
 .vaga { border: 1px solid var(--borda); border-radius: 8px; padding: 12px 14px; background: var(--bg-elevado); }
 .vaga .topo { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; }
@@ -191,16 +192,13 @@ footer { text-align: center; color: var(--texto-fraco); font-size: 12px; margin-
 
   <div class="grade-status" id="status-execucao"></div>
 
-  <section class="cartao">
-    <h2 id="titulo-recentes">Destaques recentes</h2>
-    <div class="abas" id="abas-perfil-recentes"></div>
-    <div class="vagas-grade" id="lista-recentes"></div>
-  </section>
+  <section class="cartao" id="blocos-ranqueados"></section>
 
   <section class="cartao">
     <h2>Todas as vagas</h2>
     <div class="controles">
       <input type="search" id="busca" placeholder="Buscar por título, empresa, local ou fonte…">
+      <select id="filtro-categoria"><option value="">Todas as categorias</option></select>
       <select id="filtro-perfil"><option value="">Todos os perfis</option></select>
       <select id="filtro-site"><option value="">Todas as fontes</option></select>
       <select id="filtro-modalidade">
@@ -257,8 +255,38 @@ footer { text-align: center; color: var(--texto-fraco); font-size: 12px; margin-
   var DADOS = JSON.parse(document.getElementById("dados-painel").textContent);
   var VAGAS = DADOS.vagas;
   var LINHAS_POR_PAGINA = 25;
-  var TAMANHO_JANELA_RECENTE_DIAS = 7;
-  var MIN_RECENTES = 8; // se a janela de 7 dias vier curta demais, completa até este mínimo
+  var MAX_POR_BLOCO = 40; // cartões renderizados por bloco (hoje + histórico); o resto fica na tabela completa
+
+  // Requisito atualizado (20/08): 4 blocos fixos, cada um ranqueado por
+  // relevância (maior match primeiro), "hoje" separado do resto do
+  // histórico — mas o histórico continua todo acessível (nada é
+  // descartado, só limitado no CARTÃO; a tabela "Todas as vagas" abaixo
+  // tem a categoria como filtro e mostra tudo, sem limite).
+  var CATEGORIAS = [
+    {
+      chave: "intl-explicito", titulo: "Internacional — mercado Brasil/LATAM explícito",
+      filtro: function (v) { return v.perfil === "internacional" && v.mercado_confirmado; },
+    },
+    {
+      chave: "intl-sem-mercado", titulo: "Internacional — sem mercado declarado",
+      filtro: function (v) { return v.perfil === "internacional" && !v.mercado_confirmado; },
+    },
+    {
+      chave: "br-remoto", titulo: "Brasil — Remoto",
+      filtro: function (v) { return v.perfil === "brasil" && v.modalidade === "Remoto"; },
+    },
+    {
+      chave: "br-hibrido", titulo: "Brasil — Híbrido/Presencial (São Paulo)",
+      filtro: function (v) { return v.perfil === "brasil" && v.modalidade !== "Remoto"; },
+    },
+  ];
+
+  function categoriaDaVaga(v) {
+    for (var i = 0; i < CATEGORIAS.length; i++) {
+      if (CATEGORIAS[i].filtro(v)) return CATEGORIAS[i].chave;
+    }
+    return "";
+  }
 
   function el(tag, props, filhos) {
     var e = document.createElement(tag);
@@ -318,23 +346,23 @@ footer { text-align: center; color: var(--texto-fraco); font-size: 12px; margin-
     document.getElementById("rodape-geracao").textContent = "Painel gerado em " + formatarData(DADOS.geradoEm);
   }
 
-  // -------------------------------------------------------- RECENTES
+  // --------------------------------------------------------- BLOCOS
 
-  var perfilAtivoRecentes = "";
+  function ehHoje(iso) {
+    if (!iso) return false;
+    var s = iso.replace(" ", "T");
+    var d = new Date(s.endsWith("Z") || s.includes("+") ? s : s + "Z");
+    if (isNaN(d.getTime())) return false;
+    var hoje = new Date();
+    return d.getUTCFullYear() === hoje.getUTCFullYear() &&
+      d.getUTCMonth() === hoje.getUTCMonth() &&
+      d.getUTCDate() === hoje.getUTCDate();
+  }
 
-  function vagasRecentes(perfilChave) {
-    var agora = Date.now();
-    var limite = agora - TAMANHO_JANELA_RECENTE_DIAS * 24 * 60 * 60 * 1000;
-    var base = perfilChave ? VAGAS.filter(function (v) { return v.perfil === perfilChave; }) : VAGAS.slice();
-    var recentes = base.filter(function (v) {
-      var t = new Date((v.encontrada_em || "").replace(" ", "T") + "Z").getTime();
-      return !isNaN(t) && t >= limite;
-    });
-    if (recentes.length < MIN_RECENTES) recentes = base.slice(0, MIN_RECENTES);
-    recentes.sort(function (a, b) {
+  function ordenarPorMatch(lista) {
+    return lista.slice().sort(function (a, b) {
       return (b.relevancia - a.relevancia) || (b.encontrada_em || "").localeCompare(a.encontrada_em || "");
     });
-    return recentes.slice(0, 30);
   }
 
   function cartaoVaga(v) {
@@ -357,25 +385,59 @@ footer { text-align: center; color: var(--texto-fraco); font-size: 12px; margin-
     return el("div", { class: "vaga" }, filhos);
   }
 
-  function renderRecentes() {
-    var abas = document.getElementById("abas-perfil-recentes");
-    abas.innerHTML = "";
-    var opcoes = [["", "Todos"]].concat(Object.keys(DADOS.nomesPerfis).map(function (c) { return [c, DADOS.nomesPerfis[c]]; }));
-    opcoes.forEach(function (par) {
-      var chave = par[0], rotulo = par[1];
-      var botao = el("button", { class: "aba" + (chave === perfilAtivoRecentes ? " ativa" : ""), text: rotulo });
-      botao.addEventListener("click", function () { perfilAtivoRecentes = chave; renderRecentes(); });
-      abas.appendChild(botao);
-    });
+  function irParaCategoriaNaTabela(chaveCategoria) {
+    document.getElementById("filtro-categoria").value = chaveCategoria;
+    document.getElementById("busca").value = "";
+    paginaAtual = 0;
+    renderTabela();
+    document.getElementById("filtro-categoria").scrollIntoView({ behavior: "smooth", block: "center" });
+  }
 
-    var lista = document.getElementById("lista-recentes");
-    lista.innerHTML = "";
-    var recentes = vagasRecentes(perfilAtivoRecentes);
-    if (recentes.length === 0) {
-      lista.appendChild(el("p", { class: "meta", text: "Nenhuma vaga ainda." }));
-      return;
+  function renderBloco(categoria) {
+    var todasDaCategoria = VAGAS.filter(categoria.filtro);
+    var hoje = ordenarPorMatch(todasDaCategoria.filter(function (v) { return ehHoje(v.encontrada_em); }));
+    var historico = ordenarPorMatch(todasDaCategoria.filter(function (v) { return !ehHoje(v.encontrada_em); }));
+
+    var filhos = [
+      el("div", { class: "bloco-cabecalho" }, [
+        el("h3", { text: categoria.titulo }),
+        el("span", { class: "meta", text: hoje.length + " hoje · " + todasDaCategoria.length + " no histórico total" }),
+      ]),
+    ];
+
+    if (todasDaCategoria.length === 0) {
+      filhos.push(el("p", { class: "meta", text: "Nenhuma vaga ainda." }));
+      return el("div", { class: "bloco" }, filhos);
     }
-    recentes.forEach(function (v) { lista.appendChild(cartaoVaga(v)); });
+
+    var grade = el("div", { class: "vagas-grade" });
+    if (hoje.length) {
+      grade.appendChild(el("p", { class: "rotulo-grupo", text: "Hoje, por match" }));
+      hoje.forEach(function (v) { grade.appendChild(cartaoVaga(v)); });
+    }
+    var espacoRestante = Math.max(0, MAX_POR_BLOCO - hoje.length);
+    var restanteDoHistorico = historico.slice(0, espacoRestante);
+    if (restanteDoHistorico.length) {
+      grade.appendChild(el("p", { class: "rotulo-grupo", text: "Histórico, por match" }));
+      restanteDoHistorico.forEach(function (v) { grade.appendChild(cartaoVaga(v)); });
+    }
+    filhos.push(grade);
+
+    if (historico.length > restanteDoHistorico.length) {
+      var faltam = historico.length - restanteDoHistorico.length;
+      var btn = el("button", { class: "pagina", text: "Ver mais " + faltam + " no histórico (tabela abaixo) ↓" });
+      btn.addEventListener("click", function () { irParaCategoriaNaTabela(categoria.chave); });
+      filhos.push(btn);
+    }
+
+    return el("div", { class: "bloco" }, filhos);
+  }
+
+  function renderBlocos() {
+    var alvo = document.getElementById("blocos-ranqueados");
+    alvo.innerHTML = "";
+    alvo.appendChild(el("h2", { text: "Vagas ranqueadas por categoria" }));
+    CATEGORIAS.forEach(function (categoria) { alvo.appendChild(renderBloco(categoria)); });
   }
 
   // ------------------------------------------------------- TABELA
@@ -385,6 +447,8 @@ footer { text-align: center; color: var(--texto-fraco); font-size: 12px; margin-
   var ordemAsc = false;
 
   function popularSelects() {
+    var selCategoria = document.getElementById("filtro-categoria");
+    CATEGORIAS.forEach(function (c) { selCategoria.appendChild(el("option", { value: c.chave, text: c.titulo })); });
     var selPerfil = document.getElementById("filtro-perfil");
     Object.keys(DADOS.nomesPerfis).forEach(function (c) {
       selPerfil.appendChild(el("option", { value: c, text: DADOS.nomesPerfis[c] }));
@@ -396,11 +460,13 @@ footer { text-align: center; color: var(--texto-fraco); font-size: 12px; margin-
 
   function vagasFiltradas() {
     var termo = document.getElementById("busca").value.trim().toLowerCase();
+    var categoria = document.getElementById("filtro-categoria").value;
     var perfil = document.getElementById("filtro-perfil").value;
     var site = document.getElementById("filtro-site").value;
     var modalidade = document.getElementById("filtro-modalidade").value;
 
     return VAGAS.filter(function (v) {
+      if (categoria && categoriaDaVaga(v) !== categoria) return false;
       if (perfil && v.perfil !== perfil) return false;
       if (site && v.site !== site) return false;
       if (modalidade && v.modalidade !== modalidade) return false;
@@ -454,7 +520,7 @@ footer { text-align: center; color: var(--texto-fraco); font-size: 12px; margin-
   }
 
   function religarControles() {
-    ["busca", "filtro-perfil", "filtro-site", "filtro-modalidade"].forEach(function (id) {
+    ["busca", "filtro-categoria", "filtro-perfil", "filtro-site", "filtro-modalidade"].forEach(function (id) {
       document.getElementById(id).addEventListener("input", function () { paginaAtual = 0; renderTabela(); });
     });
     document.getElementById("pagina-anterior").addEventListener("click", function () { paginaAtual--; renderTabela(); });
@@ -500,7 +566,7 @@ footer { text-align: center; color: var(--texto-fraco); font-size: 12px; margin-
   }
 
   renderStatus();
-  renderRecentes();
+  renderBlocos();
   popularSelects();
   religarControles();
   renderTabela();

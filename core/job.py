@@ -996,6 +996,15 @@ class Job:
     # relevancia — "" até lá. Só pra aparecer na notificação; não
     # influencia filtro nem score.
     motivo: str = ""
+    # Requisito atualizado (20/08): o painel (ver painel/gerar_painel.py)
+    # separa vaga internacional em dois blocos — mercado Brasil/LATAM
+    # declarado EXPLICITAMENTE no texto vs. remota sem mercado declarado
+    # (passou por não ter base pra rejeitar, não por afirmar elegibilidade).
+    # Preenchido por confirma_mercado() junto de relevancia/motivo — False
+    # até lá. Só pra exibição, não influencia filtro nem score (mesmo dado
+    # que RegrasFiltro.mercados_remoto_aceitos já usa internamente pra
+    # aprovar/rejeitar, só que agora também persistido pro painel).
+    mercado_confirmado: bool = False
 
     def __post_init__(self):
         """Sobrepõe modalidade="Remoto" quando o TÍTULO contradiz (Híbrido/
@@ -1307,8 +1316,8 @@ class Job:
         )
 
     def motivo_aprovacao(self, regras: RegrasFiltro) -> str:
-        """Qual sinal aprovou a vaga — só pra aparecer na notificação, não
-        influencia combina_com() nem pontuar_relevancia(). MEDIDO: a
+        """Qual sinal aprovou a vaga — só pra aparecer na notificação/painel,
+        não influencia combina_com() nem pontuar_relevancia(). MEDIDO: a
         mensagem nunca dizia qual regra bateu; via o resultado (vaga
         chegou), nunca a causa (por que ela passou) — sem isso não dá pra
         perceber, olhando as notificações, que uma keyword_ambiguo ou uma
@@ -1317,27 +1326,33 @@ class Job:
 
         Sinal de cargo (sempre um dos três — bate_keyword exige pelo menos
         um pra aprovar), mesma prioridade de pontuar_relevancia:
-        - "Cargo forte": bateu keyword inequívoca de dados/BI.
-        - "Cargo ambíguo + qualificador": cargo genérico (ex: "Business
-          Analyst") só aprovado por causa do qualificador junto.
-        - "Ferramenta + cargo": aprovou por ferramenta no título (ex:
-          "Power BI"), não por palavra de cargo.
-
-        Mais " · idioma sem mercado" quando a vaga é remota, o texto não
-        declarou mercado nenhum, e só passou no gate de geografia porque o
-        idioma apareceu no título — o caminho mais frágil dos três (ver
-        MEDIDO no item 03: foi exatamente esse caminho que deixava passar
-        vaga sem relação nenhuma com o mercado antes da correção)."""
+        - "Cargo forte": bateu keyword inequívoca de Produto.
+        - "Cargo ambíguo + qualificador": cargo genérico só aprovado por
+          causa do qualificador junto (perfil atual não usa este eixo —
+          ver KEYWORDS_CARGO_AMBIGUO vazio em config.py — mas o mecanismo
+          continua aqui pra quando algum perfil precisar dele).
+        - "Ferramenta + cargo": aprovou por ferramenta no título (idem,
+          perfil atual não usa — FERRAMENTAS_TITULO vazio).
+        """
         av = self._avaliar(regras)
         if av.bate_forte:
-            motivo = "Cargo forte"
-        elif av.bate_ambiguo:
-            motivo = "Cargo ambíguo + qualificador"
-        else:
-            motivo = "Ferramenta + cargo"
-        if av.bate_remoto and not av.escopos and av.idioma_bateu_titulo:
-            motivo += " · idioma sem mercado"
-        return motivo
+            return "Cargo forte"
+        if av.bate_ambiguo:
+            return "Cargo ambíguo + qualificador"
+        return "Ferramenta + cargo"
+
+    def confirma_mercado(self, regras: RegrasFiltro) -> bool:
+        """True quando o escopo remoto bateu EXPLICITAMENTE um mercado
+        aceito (ver RegrasFiltro.mercados_remoto_aceitos e escopos em
+        _avaliar) — False quando a vaga não é remota, ou é remota mas não
+        declara mercado nenhum no texto (passou pelo gate por não ter base
+        pra rejeitar, não por afirmar elegibilidade Brasil/LATAM).
+
+        Requisito atualizado (20/08): o painel separa vaga internacional
+        nesses dois grupos — "declara aceitar Brasil/LATAM" é um sinal bem
+        mais forte de que dá pra se candidatar de verdade do que "não
+        declarou nada, então não tem base pra recusar"."""
+        return self._avaliar(regras).mercado_confirmado
 
     def escopo_rejeitado_por_mercado(self, regras: RegrasFiltro) -> set[str] | None:
         """Só pra diagnóstico/log (ver utils/filtro.py) — refaz o mesmo
