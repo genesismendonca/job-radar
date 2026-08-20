@@ -92,13 +92,23 @@ TERMOS_POR_CICLO_INTL = 10
 # que exige inglês nativo — não é a busca aqui que filtra isso, é o mercado
 # depois.
 #
-# CUSTO: de 6 para ~44 países é ~7x mais busca por termo — o ciclo
-# internacional já era o mais lento do projeto (25min medido com só 6
-# países + Indeed Intl, que foi desligado por gargalo). Sem alguma forma de
-# rodízio por país (que este projeto ainda não tem — só TERMOS_POR_CICLO_INTL
-# roda em rodízio, location não), o ciclo pode estourar a janela de 3h do
-# cron. Vale medir o tempo real após esta mudança antes de considerar
-# reativar Indeed Intl ou paginar (MAX_PAGINAS) de novo.
+# CUSTO (estimado em 20/08, não medido ao vivo — tentativa de medir direto
+# neste ambiente de dev falhou: sem saída de rede até o linkedin.com daqui,
+# só em produção/GitHub Actions): a base real é a própria medição em
+# perfis.py (histórico) — 6 países, 10 termos × 6 × 2 passadas = 120
+# requisições em 6m24s reais (~3,2s/requisição, navegação completa
+# incluída). Escalando linear pra 44 países (10 × 44 × 2 = 880
+# requisições): ~47min só pro LinkedIn Intl, cenário otimista. Somado ao
+# perfil Brasil (~11-12min medidos) dá ciclo completo perto de ~60min —
+# dentro do timeout do job (150min, ver .github/workflows/jobradar.yml) e
+# da janela do cron (3h), mas é extrapolação: mais país é mais superfície
+# pro LinkedIn perceber e passar a limitar a requisição (mesmo padrão que
+# já tirou o Indeed Intl do projeto por bloqueio), o que pode empurrar esse
+# número bem acima do estimado. MEDIR de verdade no primeiro ciclo real
+# após o merge (ver jobradar.log) antes de considerar reativar Indeed Intl
+# ou paginar (MAX_PAGINAS) de novo — se estourar, a mitigação é introduzir
+# rodízio por país (mesmo mecanismo do TERMOS_POR_CICLO_INTL, que este
+# projeto ainda não tem pra location).
 #
 # "Latin America"/"LATAM"/"EMEA"/"Iberia" continuam FORA: testei ao vivo no
 # endpoint do LinkedIn e nenhum nome de região resolve como location de
