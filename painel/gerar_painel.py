@@ -3,9 +3,9 @@
 Requisito atualizado pela usuária (20/08): a saída deixou de ser Telegram
 (push) e passou a ser um painel que ela acessa quando quiser (pull),
 publicado no GitHub Pages — mesma filosofia de custo zero do resto do
-projeto (GitHub Actions já roda a cada 3h; este script roda logo depois,
-no mesmo job, e o resultado é só mais um arquivo commitado, igual
-data/jobs.db já era).
+projeto (GitHub Actions já roda 1x/dia, de madrugada; este script roda
+logo depois, no mesmo job, e o resultado é só mais um arquivo commitado,
+igual data/jobs.db já era).
 
 Página self-contained: HTML/CSS/JS embutidos num arquivo só, sem CDN
 nenhum (mesmo raciocínio dos scrapers — nada externo pra quebrar ou

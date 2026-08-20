@@ -20,7 +20,7 @@
 
 ## 💎 Proposta de valor
 
-> Em cidade pequena, vaga boa de Dados/BI aparece pouco e some rápido — quem checa o board duas vezes por dia perde pra quem checou na primeira hora. **JobRadar** é um sistema de monitoramento contínuo que substitui essa checagem manual: varre **8 fontes** a cada **3 horas**, filtra por cargo/cidade/mercado/idioma com três níveis de confiança, pontua cada vaga por relevância e publica tudo num painel — rodando de graça, sem servidor próprio, 24 horas por dia.
+> Em cidade pequena, vaga boa de Dados/BI aparece pouco e some rápido — quem checa o board duas vezes por dia perde pra quem checou na primeira hora. **JobRadar** é um sistema de monitoramento contínuo que substitui essa checagem manual: varre **8 fontes** uma vez por dia, de madrugada, filtra por cargo/cidade/mercado/idioma com três níveis de confiança, pontua cada vaga por relevância e publica tudo num painel pronto quando ela acorda — rodando de graça, sem servidor próprio.
 
 ## 📄 Resumo executivo
 
@@ -32,7 +32,7 @@ Entre 07 e 15 de agosto, o sistema já processou **1.052 vagas únicas**, sem in
 | 🔗 Concentração numa única fonte (LinkedIn) | **89,5%** |
 | 🧪 Testes automatizados (CI a cada push) | **295** |
 | 🌎 Fontes monitoradas em paralelo | **8** |
-| ⏱️ Frequência de checagem | **a cada 3h** |
+| ⏱️ Frequência de checagem | **1x por dia, 06h (Brasília)** |
 | 💰 Custo de infraestrutura | **R$ 0** |
 
 A concentração em LinkedIn é um risco medido, não ignorado: o endpoint usado não é oficial e o próprio código documenta a chance de bloqueio — por isso parte do trabalho recente foi medir o rendimento de cada fonte secundária e paginar mais fundo nelas, em vez de só empilhar fonte nova.
@@ -99,7 +99,7 @@ jobradar/
 ├── docs/
 │ └── index.html ← painel publicado no GitHub Pages (gerado, não editado à mão)
 └── .github/workflows/
-├── jobradar.yml ← cron de produção (a cada 3h) — busca + gera painel + commita
+├── jobradar.yml ← cron de produção (1x/dia, 06h Brasília) — busca + gera painel + commita
 └── testes.yml ← CI
 
 ## 💻 Como rodar

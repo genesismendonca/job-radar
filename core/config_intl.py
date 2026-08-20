@@ -99,15 +99,20 @@ TERMOS_POR_CICLO_INTL = 10
 # incluída). Escalando linear pra 44 países (10 × 44 × 2 = 880
 # requisições): ~47min só pro LinkedIn Intl, cenário otimista. Somado ao
 # perfil Brasil (~11-12min medidos) dá ciclo completo perto de ~60min —
-# dentro do timeout do job (150min, ver .github/workflows/jobradar.yml) e
-# da janela do cron (3h), mas é extrapolação: mais país é mais superfície
-# pro LinkedIn perceber e passar a limitar a requisição (mesmo padrão que
-# já tirou o Indeed Intl do projeto por bloqueio), o que pode empurrar esse
-# número bem acima do estimado. MEDIR de verdade no primeiro ciclo real
-# após o merge (ver jobradar.log) antes de considerar reativar Indeed Intl
-# ou paginar (MAX_PAGINAS) de novo — se estourar, a mitigação é introduzir
-# rodízio por país (mesmo mecanismo do TERMOS_POR_CICLO_INTL, que este
-# projeto ainda não tem pra location).
+# dentro do timeout do job (150min, ver .github/workflows/jobradar.yml).
+#
+# A pressão de tempo que motivou essa conta caiu bastante desde que o cron
+# passou de 8 ciclos/dia (a cada 3h) pra 1x/dia (ver jobradar.yml,
+# requisito atualizado 20/08): mesmo o cenário pessimista (ciclo bem acima
+# do estimado, por bloqueio do LinkedIn — mesmo padrão que já tirou o
+# Indeed Intl do projeto) tem folga enorme numa janela de 24h, ao contrário
+# de antes, quando o ciclo precisava terminar bem dentro de 3h pra não
+# empilhar em cima do próximo. Ainda assim é extrapolação, não medição —
+# MEDIR de verdade no primeiro ciclo real após o merge (ver jobradar.log)
+# antes de considerar reativar Indeed Intl ou paginar (MAX_PAGINAS) de
+# novo. Se algum dia o cron voltar a ser mais frequente, a mitigação pra
+# custo alto é introduzir rodízio por país (mesmo mecanismo do
+# TERMOS_POR_CICLO_INTL, que este projeto ainda não tem pra location).
 #
 # "Latin America"/"LATAM"/"EMEA"/"Iberia" continuam FORA: testei ao vivo no
 # endpoint do LinkedIn e nenhum nome de região resolve como location de

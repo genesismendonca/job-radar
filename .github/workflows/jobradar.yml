@@ -2,7 +2,14 @@ name: JobRadar
 
 on:
   schedule:
-    - cron: "0 */3 * * *"
+    # Requisito atualizado pela usuária (20/08): 1x por dia, não mais a
+    # cada 3h — o painel virou pull (ela olha quando quiser, não precisa
+    # de ciclo curto pra "não perder" notificação) e a expansão de
+    # LOCATIONS_INTL (~44 países, ver core/config_intl.py) deixaria 8
+    # ciclos/dia caro demais em minutos de Actions. 09:00 UTC = 06:00 em
+    # Brasília (UTC-3, sem horário de verão) — termina cedo, painel
+    # pronto quando ela acorda.
+    - cron: "0 9 * * *"
   workflow_dispatch: {}
 
 concurrency:
@@ -21,9 +28,9 @@ jobs:
     # false, um run travado também bloqueia o próximo ciclo inteiro, porque
     # o run seguinte fica na fila esperando o anterior liberar o grupo. 150
     # min dá folga real sobre a duração medida do ciclo (~1h30-2h com toda a
-    # paginação e a passada dupla do LinkedIn) e ainda fica abaixo do
-    # intervalo do cron (3h), então um run truncado nunca empilha em cima
-    # do próximo agendado.
+    # paginação e a passada dupla do LinkedIn) e fica bem abaixo do
+    # intervalo do cron (1x/dia, ver acima), então um run truncado nunca
+    # empilha em cima do próximo agendado.
     timeout-minutes: 150
     steps:
       - name: Checkout do repositório
