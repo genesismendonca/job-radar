@@ -4,97 +4,46 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Cargo forte: título que só existe mesmo em vaga de dados/BI, sem
+# Requisito atualizado pelo usuário (20/08): o projeto pivotou de Dados/BI
+# pra Produto (PM/PO) — perfil real do usuário (Senior Product Manager,
+# veio de Product Owner) via LinkedIn. Substituição completa, não adição:
+# o histórico de Dados/BI (cidades do Nordeste, keywords em espanhol pra
+# Argentina/Chile etc.) era de outra pessoa (ver "Autora" no README),
+# sem relação com quem usa o projeto agora.
+#
+# Cargo forte: título que só existe mesmo em vaga de Produto, sem
 # possibilidade real de ser outra área.
 KEYWORDS_CARGO_FORTE = [
-    "Analista de Dados",
-    "Analista BI",
-    "Analista de BI",
-    "Business Intelligence",
-    "Data Analytics",
-    "Analista de Analytics",
-    "Data Analyst",
-    "Desenvolvedor BI",
-    "Consultor BI",
-    "Analista de Inteligência de Negócios",
-    "BI Developer",
-    "BI Analyst",
-    "Analista de Reporting",
-    "Analista de Inteligência de Mercado",
-    "Analista de Indicadores",
-    "Reporting Analyst",
-    "Insights Analyst",
-    "Data Insights Analyst",
-    "MIS Analyst",
-    "Analista de MIS",
-    "Assistente de BI",
-    "Auxiliar de BI",
-    "Analista de Inteligência Comercial",
-    "Data Specialist",
-    "Data Quality Analyst",
-    "Data Intelligence Analyst",
-    "BI & Analytics Analyst",
-    "Analytics Specialist",
-    "Especialista em Dados",
-    "Analista de Planejamento e Dados",
-    # "Datos" (espanhol) não é "Dados" (português) — nenhuma keyword em
-    # português cobre título em espanhol, mesmo sendo a mesma vaga. Faz
-    # sentido aqui no pipeline BR (não só em config_intl.py) porque
-    # LinkedInScraper já busca em Argentina/Chile (ver LOCATIONS_LINKEDIN).
-    "Analista de Datos",
-    "Analítica de Datos",
+    "Product Manager",
+    "Product Owner",
+    "Gerente de Produto",
+    "Gerente de Producto",  # espanhol — LinkedInScraper já busca em Argentina/Chile (ver LOCATIONS_LINKEDIN)
+    "Head of Product",
+    "Diretor de Produto",
+    "Group Product Manager",
+    "Principal Product Manager",
+    "Product Lead",
+    "Líder de Produto",
+    "VP of Product",
+    "VP de Produto",
 ]
 
-# Cargo ambíguo: título que também é usado em vaga sem nada a ver com
-# dados/BI (ex: "Business Analyst" e "Analista de Negócios" existem em
-# TI, finanças, RH, operações... qualquer área). Só conta como match se o
-# título TAMBÉM tiver um QUALIFICADORES_DADOS junto — é o que permite ir
-# adicionando cargo adjacente (Product Analyst, CRM Analyst, Marketing
-# Analyst etc.) sem cada um virar fonte de ruído sozinho.
-KEYWORDS_CARGO_AMBIGUO = [
-    "Business Analyst",
-    "Analista de Negócios",
-    "Business Analytics",
-    "Analista de Performance",
-]
+# Sem eixo de cargo ambíguo neste perfil: as siglas óbvias ("PM", "PO")
+# são justamente o tipo de palavra-chave solta que este projeto evita de
+# propósito ("nada aprova por palavra-chave solta") — "PM" aparece à
+# beça em vaga de Project Manager, "PO" em vaga de logística (Purchase
+# Order). Sem sinal forte o bastante nem pra valer como AMBÍGUO
+# (qualificador "produto"/"product" não resolveria a ambiguidade com
+# segurança pra uma sigla de 2 letras), então ficam de fora — só os
+# títulos por extenso de KEYWORDS_CARGO_FORTE valem.
+KEYWORDS_CARGO_AMBIGUO = []
+QUALIFICADORES_DADOS = []
 
-# Termo que precisa aparecer junto no título quando o cargo é ambíguo, pra
-# confirmar que é vaga de dados/BI e não de outra área qualquer.
-QUALIFICADORES_DADOS = [
-    "dados",
-    "data",
-    "bi",
-    "sql",
-    "power bi",
-    "analytics",
-    "kpi",
-    "dashboard",
-    "métricas",
-    "reporting",
-    "insights",
-]
-
-# Ferramenta que aparece como núcleo do título ("Analista de Power BI").
-# Só conta como match se o título TAMBÉM tiver uma palavra de cargo — é o
-# espelho da regra de KEYWORDS_CARGO_AMBIGUO: lá o cargo é ambíguo e pede
-# domínio, aqui a ferramenta é ambígua e pede cargo. Sem isso, "Power BI"
-# sozinho aprovaria "Power BI Senior" e "Desenvolvedor (Power BI + Python)",
-# que são vaga de desenvolvimento, não de análise.
-FERRAMENTAS_TITULO = [
-    "Power BI",
-]
-
-# Palavra de cargo que confirma que a vaga de ferramenta é de análise.
-# "desenvolvedor"/"developer"/"engenheiro" ficam FORA de propósito: é o que
-# mantém vaga de dev fora do radar.
-QUALIFICADORES_CARGO = [
-    "analista",
-    "analyst",
-    "especialista",
-    "specialist",
-    "consultor",
-    "consultant",
-]
+# Sem ferramenta-núcleo equivalente a "Power BI" no domínio de Produto —
+# fica vazio de propósito (mesmo padrão que o perfil internacional já usa
+# pra esse eixo). Se um padrão real de título aparecer, entra aqui.
+FERRAMENTAS_TITULO = []
+QUALIFICADORES_CARGO = []
 
 KEYWORDS = KEYWORDS_CARGO_FORTE + KEYWORDS_CARGO_AMBIGUO
 
@@ -108,65 +57,40 @@ KEYWORDS = KEYWORDS_CARGO_FORTE + KEYWORDS_CARGO_AMBIGUO
 #
 # TERMOS_CARGO é derivado direto de KEYWORDS (em vez de mantido à mão em
 # lista separada) — antes as duas listas divergiam: metade das KEYWORDS
-# (ex: "Desenvolvedor BI", "BI Analyst", "Analista de Negócios") nunca era
-# buscada de verdade, só existia como filtro, então só pegava essas vagas
-# por sorte via outro termo. Com a derivação automática isso não pode mais
-# acontecer — toda keyword nova em KEYWORDS já vira busca também.
-TERMOS_CARGO_EXTRA = [
-    # termos mais amplos que a keyword exata, mantidos por dar rede mais
-    # larga na busca (a keyword em si é mais restrita, de propósito, pra
-    # não gerar falso positivo no filtro de título).
-    "power bi",
-    "inteligência de mercado",
-]
+# nunca era buscada de verdade, só existia como filtro, então só pegava
+# essas vagas por sorte via outro termo. Com a derivação automática isso
+# não pode mais acontecer — toda keyword nova em KEYWORDS já vira busca
+# também.
+#
+# Requisito atualizado (20/08, pivô Dados/BI → Produto): sem termo EXTRA
+# por enquanto — ao contrário do Power BI/"inteligência de mercado" de
+# antes (termo mais amplo que a keyword exata, pra dar rede maior sem
+# frouxar o filtro de título), não há um equivalente medido ainda pro
+# domínio de Produto. Fácil adicionar aqui se algum termo mostrar valor
+# real (ex: nicho como "growth product manager" render vaga que os
+# títulos completos não acham).
+TERMOS_CARGO_EXTRA = []
 
 TERMOS_CARGO = sorted(set(k.lower() for k in KEYWORDS) | set(TERMOS_CARGO_EXTRA))
 
-# MEDIDO em jobradar.log (12 rodízios completos, Gupy+99Jobs+GeekHunter+
-# Solides): "dax" e "power query" nunca resultaram em nenhuma vaga nova
-# notificada nessas 4 fontes — 0 em 48 buscas cada, a maioria vazia
-# ("0 resultados reais") e o resto timeout. "microsoft fabric" teve 1 vaga
-# no log inteiro (363 notificações) com o termo no título, e essa vaga
-# também tinha "Power BI"/"Analista de BI" no título — já seria achada por
-# termo que continua na lista. Timeout: os 3 termos concentraram metade
-# (13 de 26) dos timeouts dessas 4 fontes sendo só 3 dos 42 termos (7%) —
-# confirma o padrão relatado. Removidos por render zero e custarem sessão
-# igual a um termo de cargo.
-TERMOS_FERRAMENTA = [
-    "sql",
-    "python",
-    "tableau",
-    "qlik",
-    "looker",
-    "bigquery",
-]
+# Requisito atualizado (20/08): sem termo de ferramenta pro domínio de
+# Produto — ao contrário de Dados/BI (SQL, Python, Tableau...), não existe
+# um conjunto de ferramenta-núcleo que sinalize vaga de Produto de forma
+# confiável (Jira/Figma são usados por times inteiros, não só por PM/PO) —
+# incluir um termo desses aqui só multiplicaria busca sem sinal real.
+# Fácil adicionar se surgir um padrão medido.
+TERMOS_FERRAMENTA = []
 
 TERMOS_BUSCA = TERMOS_CARGO + TERMOS_FERRAMENTA
 
-# Termos que rodam em TODO ciclo, fora do rodízio.
-#
-# MEDIDO: uma vaga real ("Analista de Dados", JCPM Shoppings, Recife) não
-# foi notificada. O título bate a keyword mais forte da lista e o local é
-# uma das 8 cidades — passaria no filtro sem esforço. Ela nunca chegou a ser
-# BUSCADA: com 44 termos e 10 por ciclo, uma volta completa leva 13 horas, e
-# o rodízio é alfabético — "analista de dados" disputa vez de igual pra igual
-# com "bigquery" e "looker". Vaga publicada logo depois da passagem do termo
-# fica invisível por meio dia, e em portal que recebe vaga o tempo todo isso
-# é tempo demais.
-#
-# Prioridade não é sobre volume, é sobre o que define o perfil: são os
-# títulos que a usuária de fato procura, e os que mais aparecem nas vagas
-# que já foram aprovadas. Passam de 1x a cada 13h para 8x por dia.
-#
-# Custo: bloco por ciclo vai de 10 para 15 termos (+50%). O ciclo medido é
-# de 18 min desde que o Indeed saiu, então cabe — antes disso, com 37 min,
-# não caberia. É essa folga que torna a mudança possível agora.
+# Termos que rodam em TODO ciclo, fora do rodízio — os títulos que
+# definem o perfil (ver histórico de por que isso existe: vaga real que
+# batia a keyword mais forte da lista nunca era BUSCADA porque o rodízio
+# alfabético só passava pelo termo a cada várias horas).
 TERMOS_PRIORITARIOS = [
-    "analista de dados",
-    "analista de bi",
-    "business intelligence",
-    "data analyst",
-    "power bi",
+    "product manager",
+    "product owner",
+    "gerente de produto",
 ]
 
 # Medido: os TERMOS_BUSCA inteiros (hoje 42) rodando em TODO ciclo é o que

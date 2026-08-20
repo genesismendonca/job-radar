@@ -10,30 +10,26 @@
 # internacional nunca vai ter o mesmo link de uma vaga brasileira).
 from core.config import DB_PATH, CIDADES_EUROPA_IBERICA  # noqa: F401
 
-# Requisito atualizado pela usuaria (20/08): cargo passou a ser só em
-# inglês/português — espanhol saiu (removida a nomenclatura em espanhol
-# que existia aqui, ex: "Analista de Datos", "Analítica de Datos"). A
-# elegibilidade de quem pode se candidatar (Brasil/LATAM) deixou de
-# depender de idioma no anúncio — passou a ser resolvida pelo mercado
-# declarado no texto (ver MERCADOS_REMOTO_ACEITOS_INTL mais abaixo).
+# Requisito atualizado pelo usuário (20/08): pivô de Dados/BI pra Produto
+# (PM/PO) — perfil real do usuário via LinkedIn (Senior Product Manager,
+# veio de Product Owner). Substituição completa da lista anterior
+# (Data Analyst/Business Intelligence/eixo Data Annotation), não adição —
+# mesmo raciocínio do config.py: o alvo de Dados/BI era de outra pessoa.
+#
+# Cargo passou a ser só em inglês/português (mesma decisão já tomada
+# antes do pivô — espanhol fora). A elegibilidade de quem pode se
+# candidatar (Brasil/LATAM) não depende de idioma no anúncio — é resolvida
+# pelo mercado declarado no texto (ver MERCADOS_REMOTO_ACEITOS_INTL mais
+# abaixo), então não precisa duplicar cargo em espanhol aqui.
 KEYWORDS_INTL = [
-    "Data Analyst",
-    "Business Intelligence",
-    "BI Analyst",
-    "Data Analytics",
-    "Data Specialist",
-    "Analista de Dados",
-    "Business Analyst",
-    # Eixo separado: Data Annotation / AI Evaluator — não é análise de
-    # dados, é rotular/avaliar dado pra treinar IA, mas é um nicho remoto
-    # que contrata muito por idioma (PT-BR/ES) e paga em dólar, então entra
-    # como categoria própria de cargo, não mistura com as de análise.
-    "Data Annotator",
-    "Data Annotation",
-    "AI Evaluator",
-    "AI Trainer",
-    "Data Labeler",
-    "Search Quality Rater",
+    "Product Manager",
+    "Product Owner",
+    "Gerente de Produto",
+    "Head of Product",
+    "Group Product Manager",
+    "Principal Product Manager",
+    "Product Lead",
+    "VP of Product",
 ]
 
 # Requisito atualizado pela usuaria (20/08): busca de cargo PURO passou a
