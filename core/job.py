@@ -813,13 +813,33 @@ def extrair_data_publicacao(texto_card: str) -> str:
 # Ordem importa: do mais específico pro mais genérico. Título não é
 # filtrado por senioridade — só é classificado, pra decidir isso na hora de
 # ler a notificação, não em deixar a vaga passar ou não.
+#
+# MEDIDO (20/08, pivô Dados/BI -> Produto): "manager"/"gerente" como sinal
+# de Liderança fazia sentido no domínio antigo (só aparecia numa vaga de
+# dados/BI se fosse cargo de gestão de verdade, ex: "Gerente de BI"). No
+# domínio de Produto isso quebra: "manager"/"gerente" são PARTE DO NOME DO
+# CARGO BASE ("Product Manager", "Gerente de Produto" — os próprios
+# KEYWORDS_CARGO_FORTE, ver config.py), não um sinal de senioridade acima
+# do padrão. Rodando contra as 543 vagas do primeiro ciclo real: 261 (48%)
+# classificavam "Liderança" só por causa disso — incluindo "Product
+# Manager" sem qualificador nenhum, claramente vaga de nível base, não de
+# gestão. Isso derrubava o score (_PESO_SENIORIDADE_ACIMA_DO_ALVO = -2) de
+# quase metade das vagas aprovadas sem relação nenhuma com senioridade
+# real. Exclui só o caso "é o próprio cargo base" (lookaround), sem tirar
+# o sinal de "Engineering Manager"/"Coordenador de Growth"/vaga que É de
+# gestão de verdade — essas continuam batendo normalmente.
 _NIVEIS_SENIORIDADE = [
     ("Estágio/Trainee", (r"estagi[ao]", r"estagio", r"trainee")),
     ("Júnior", (r"junior", r"jr\.?")),
     ("Pleno", (r"pleno", r"pl\.?")),
     ("Sênior", (r"senior", r"sr\.?", r"sênior")),
     ("Especialista", (r"especialista", r"specialist")),
-    ("Liderança", (r"coordenador", r"coordenadora", r"gerente", r"manager", r"head")),
+    ("Liderança", (
+        r"coordenador", r"coordenadora",
+        r"gerente(?! de produto)",
+        r"(?<!product )manager",
+        r"head",
+    )),
 ]
 
 
