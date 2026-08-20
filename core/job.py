@@ -471,32 +471,24 @@ _SIGLAS_UF_BRASIL = {
 # (RJ, SP, PE...) já resolve sozinha, nenhum estado americano usa essas.
 _SIGLAS_UF_AMBIGUAS = {"al", "ma", "mt", "ms", "pa", "sc"}
 
-# MEDIDO: "CAMPINA GRANDE DO SUL - PR" era ACEITA como se fosse Campina
-# Grande/PB. Sao cidades diferentes, a 2.500 km uma da outra. O filtro de
-# cidade procura o nome dentro do texto de `local` com borda de palavra, e
-# "campina grande" tem borda valida dentro de "campina grande do sul" — o
-# nome da cidade aceita e prefixo de outra cidade real. Mesmo caso de
-# "Natal da Serra - MG" virando Natal/RN.
-#
-# Achado ao rodar uma fonte nova (Senior) que tem muita vaga de cidade
-# pequena; as fontes antigas concentram em capital e o caso quase nao
-# aparecia. Nao e bug da fonte nova: valia pra todas.
+# MEDIDO (histórico, quando CIDADES tinha "Campina Grande"): "CAMPINA
+# GRANDE DO SUL - PR" era ACEITA como se fosse Campina Grande/PB. Sao
+# cidades diferentes, a 2.500 km uma da outra. O filtro de cidade procura o
+# nome dentro do texto de `local` com borda de palavra, e "campina grande"
+# tem borda valida dentro de "campina grande do sul" — o nome da cidade
+# aceita e prefixo de outra cidade real. Mesmo risco vale pra "São Paulo"
+# (única cidade em CIDADES agora — ver config.py): "São Paulo do Potengi -
+# RN" ou "São Paulo de Olivença - AM" seriam aceitas por engano sem essa
+# desambiguação.
 #
 # A UF resolve sem tocar no casamento de nome: quando o texto DECLARA uma
 # sigla de estado e ela nao e a esperada pra aquela cidade, nao e a cidade
-# certa. Limite conhecido e aceito: texto SEM UF nenhuma ("Campina Grande
-# do Sul", sozinho) continua passando — sem a sigla nao ha o que comparar,
-# e inventar regra por contagem de palavras arriscaria barrar "Recife PE"
-# ou "vaga em Natal". Preferir o falso positivo raro ao falso negativo.
+# certa. Limite conhecido e aceito: texto SEM UF nenhuma continua passando —
+# sem a sigla nao ha o que comparar, e inventar regra por contagem de
+# palavras arriscaria barrar "vaga em São Paulo" sozinho. Preferir o falso
+# positivo raro ao falso negativo.
 _UF_DA_CIDADE = {
-    "campina grande": "pb",
-    "joao pessoa": "pb",
-    "recife": "pe",
-    "natal": "rn",
-    "caruaru": "pe",
-    "manaus": "am",
-    "maceio": "al",
-    "aracaju": "se",
+    "sao paulo": "sp",
 }
 
 

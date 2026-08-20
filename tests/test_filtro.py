@@ -147,30 +147,31 @@ def test_extrair_escopo_remoto(nome, local, modalidade, esperado):
 CASOS_COMBINA_COM = [
     # Anti-regressão crítica (mesmo caso do teste de escopo, agora
     # end-to-end): vaga americana sem sigla de estado tem que ser barrada
-    # no perfil internacional (que só aceita LATAM/Ibéria).
+    # no perfil internacional (que só aceita Brasil/LATAM/Ibéria).
     ("seattle-barrada-perfil-intl", "Senior Data Analyst", "Greater Seattle Area", "Remoto", PERFIL_INTL, False),
-    # Remota sem mercado declarado: só passa se o TÍTULO afirmar idioma/
-    # região (spanish/portuguese/latam/...) — regra adicionada depois que
-    # "Senior Data Analyst" remoto sem relação nenhuma com o mercado
-    # passava só por não ter nada que a rejeitasse.
+    # Requisito atualizado (20/08): remota SEM mercado declarado passa
+    # direto, sem precisar de sinal de idioma/região no título — não há
+    # base nenhuma pra rejeitar (o gate de idioma no título saiu).
     ("spanish-speaking-sem-mercado-passa", "Spanish Speaking Data Analyst", "Remote", "Remoto", PERFIL_INTL, True),
     ("data-analyst-latam-passa", "Data Analyst LATAM", "Remote", "Remoto", PERFIL_INTL, True),
-    ("sem-idioma-sem-mercado-barrada", "Senior Data Analyst", "Remote", "Remoto", PERFIL_INTL, False),
-    # Mercado CONFIRMADO no texto dispensa o sinal de idioma no título — o
-    # país hispanofalante já é o próprio sinal.
-    ("mercado-confirmado-dispensa-idioma-no-titulo", "Senior Data Analyst", "Remote - Espanha", "Remoto", PERFIL_INTL, True),
+    ("sem-idioma-sem-mercado-tambem-passa", "Senior Data Analyst", "Remote", "Remoto", PERFIL_INTL, True),
+    # Mercado CONFIRMADO no texto continua decidindo sozinho — aceito passa,
+    # o resto é rejeitado independente do título.
+    ("mercado-aceito-passa", "Senior Data Analyst", "Remote - Espanha", "Remoto", PERFIL_INTL, True),
+    ("mercado-nao-aceito-barrado", "Senior Data Analyst", "Remote - Germany", "Remoto", PERFIL_INTL, False),
 
     # Perfil Brasil: cargo e cidade são checados em campos separados
     # (título vs. local) — cidade fora da lista aceita barra mesmo com
-    # cargo batendo.
+    # cargo batendo. Requisito atualizado (20/08): só São Paulo vale pra
+    # híbrido/presencial (antes era um conjunto de cidades do Nordeste).
     ("cidade-fora-da-lista-barrada", "Analista de Dados", "Nova York", "Presencial", PERFIL_BR, False),
-    ("cargo-fora-do-escopo-barrado", "Vendedor Externo", "Recife, PE", "Presencial", PERFIL_BR, False),
-    ("cargo-forte-cidade-aceita-passa", "Analista de Dados Pleno", "Recife, PE", "Presencial", PERFIL_BR, True),
+    ("cargo-fora-do-escopo-barrado", "Vendedor Externo", "São Paulo, SP", "Presencial", PERFIL_BR, False),
+    ("cargo-forte-cidade-aceita-passa", "Analista de Dados Pleno", "São Paulo, SP", "Presencial", PERFIL_BR, True),
     # keywords_ambiguo (ex: "Business Analyst") só conta com qualificador
     # de dados junto no título — sozinho é ruído de outra área (RH,
     # finanças).
-    ("cargo-ambiguo-sem-qualificador-barrado", "Business Analyst", "Recife, PE", "Presencial", PERFIL_BR, False),
-    ("cargo-ambiguo-com-qualificador-passa", "Business Analyst com SQL", "Recife, PE", "Presencial", PERFIL_BR, True),
+    ("cargo-ambiguo-sem-qualificador-barrado", "Business Analyst", "São Paulo, SP", "Presencial", PERFIL_BR, False),
+    ("cargo-ambiguo-com-qualificador-passa", "Business Analyst com SQL", "São Paulo, SP", "Presencial", PERFIL_BR, True),
 ]
 
 

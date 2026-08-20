@@ -158,9 +158,9 @@ class SeniorScraper(BaseScraper):
                 break
             except requests.RequestException as e:
                 # Nunca loga str(e): a mensagem do requests inclui a URL, e o
-                # padrão desta base é não jogar URL no log (ver notifier/
-                # telegram.py). Aqui a URL não tem segredo, mas manter o mesmo
-                # hábito evita que a exceção mude e passe a ter.
+                # padrão desta base é não jogar URL no log. Aqui a URL não tem
+                # segredo, mas manter o mesmo hábito evita que a exceção mude
+                # e passe a ter.
                 logger.warning(
                     f"[Senior] {type(e).__name__} na página {pagina + 1} de '{termo}' — "
                     "parando de paginar."

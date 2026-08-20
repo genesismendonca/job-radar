@@ -135,15 +135,18 @@ def test_remoto_reconhecido_quando_a_fonte_nao_preenche_modalidade(local):
 
 @pytest.mark.parametrize("local, modalidade", [
     # A fonte declarou a modalidade: texto solto no local NAO sobrepoe.
-    ("Home Office - São Paulo, SP", "Presencial"),
-    ("Remoto (São Paulo, SP)", "Híbrido"),
+    # Cidade usada aqui (Curitiba) é de propósito FORA da whitelist de
+    # híbrido/presencial (só São Paulo — ver config.py) — isolando que a
+    # rejeição vem da modalidade declarada, não de um acidente de cidade.
+    ("Home Office - Curitiba, PR", "Presencial"),
+    ("Remoto (Curitiba, PR)", "Híbrido"),
     ("100% Remoto - Curitiba, PR", "Presencial"),
 ])
 def test_texto_do_local_nao_sobrepoe_modalidade_declarada(local, modalidade):
     assert not _vaga(local, modalidade).combina_com(PERFIL_BR.regras)
 
 
-@pytest.mark.parametrize("local", ["São Paulo - SP", "Bloomington, IN", "Remote - US only"])
+@pytest.mark.parametrize("local", ["Curitiba - PR", "Bloomington, IN", "Remote - US only"])
 def test_fallback_de_modalidade_nao_abre_vaga_fora_da_regra(local):
     assert not _vaga(local, "").combina_com(PERFIL_BR.regras)
 
