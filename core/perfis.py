@@ -42,7 +42,6 @@ from core.config_intl import (
     CIDADES_INTL,
     ATIVAR_EIXO_IBERICO,
     MERCADOS_REMOTO_ACEITOS_INTL,
-    IDIOMAS_EXIGIDOS_INTL,
 )
 from core.job import RegrasFiltro
 from scrapers.catho import CathoScraper
@@ -235,13 +234,16 @@ PERFIL_BR = Perfil(
 
 
 # Regra primária: só remoto ("Remote"/"Remoto" em CIDADES_INTL), mercado
-# LATAM/Portugal/Espanha aceito. Sem cargo ambíguo/ferramenta ainda nesse
-# perfil — simples de propósito por ser o mais novo dos dois.
+# Brasil/LATAM/Portugal/Espanha aceito. Sem cargo ambíguo/ferramenta ainda
+# nesse perfil — simples de propósito por ser o mais novo dos dois.
 #
-# idiomas_exigidos: sem mercado declarado, exige espanhol/português/LATAM
-# no título (ver IDIOMAS_EXIGIDOS_INTL e comentário em RegrasFiltro) — a
-# busca já tentava garantir isso via termo, mas nunca era reconferido na
-# vaga em si.
+# idiomas_exigidos ficou de fora (default None — não checa) desde a
+# atualização de 20/08: a elegibilidade de quem pode se candidatar deixou
+# de depender de idioma no título e passou a ser só mercados_remoto_
+# aceitos. Vaga remota SEM mercado declarado passa direto (sem base pra
+# rejeitar); vaga que declara um país fora da lista aceita (EUA, Europa
+# não-Ibérica etc. — buscados agora via LOCATIONS_INTL) é rejeitada pelo
+# mercado, não mais pelo idioma do anúncio.
 _REGRAS_INTL = RegrasFiltro(
     keywords_forte=KEYWORDS_INTL,
     keywords_ambiguo=[],
@@ -250,7 +252,6 @@ _REGRAS_INTL = RegrasFiltro(
     qualificadores_cargo=[],
     cidades=CIDADES_INTL,
     mercados_remoto_aceitos=MERCADOS_REMOTO_ACEITOS_INTL,
-    idiomas_exigidos=IDIOMAS_EXIGIDOS_INTL,
 )
 
 # Eixo secundário (Ibéria): vaga presencial/híbrida em Portugal/Espanha,

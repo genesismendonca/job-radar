@@ -185,37 +185,19 @@ TERMOS_POR_CICLO = 10
 # _FLAGS_REMOTO em job.py). Vaga hibrida/presencial fora desta lista e
 # rejeitada; e uma whitelist, nao uma preferencia de ordenacao.
 #
-# Lista revisada contra o requisito escrito pela usuaria: as seis cidades
-# obrigatorias sao Campina Grande, Joao Pessoa, Recife, Natal, Caruaru e
-# Manaus. Maceio e Aracaju ficam por decisao explicita dela (interessam,
-# mesmo fora do requisito minimo).
+# Requisito atualizado pela usuaria (20/08): vaga nacional passou a ser
+# EXCLUSIVAMENTE remota — hibrida/presencial so entra quando for em Sao
+# Paulo. Substitui o requisito anterior (as seis cidades do Nordeste mais
+# Manaus, Maceio e Aracaju — historico em tests/test_regras_de_negocio.py
+# via git log), que deixou de valer com a mudanca de prioridade.
 #
-# MEDIDO: a lista anterior era "Nordeste", nao "as cidades que interessam",
-# e divergia do requisito nos dois sentidos ao mesmo tempo:
-#   - FALTAVA Manaus. Confirmado em teste: "Manaus - AM" + Hibrido era
-#     REJEITADA. Nenhuma vaga presencial/hibrida de Manaus podia entrar,
-#     e a busca por cidade do LinkedIn (derivada desta lista) nunca
-#     procurou la.
-#   - SOBRAVAM Jaboatao, Teresina, Sao Luis e Petrolina, que aceitavam
-#     hibrida/presencial fora da regra. Confirmado em teste.
-# Nenhum dos 76 testes existentes cobria essas regras — por isso a
-# divergencia sobreviveu. Agora esta em tests/test_regras_de_negocio.py.
-#
-# Custo: LOCATIONS_LINKEDIN_CIDADES_PRESENCIAL e derivada daqui, entao
-# cada cidade e uma busca a mais por termo no LinkedIn. Sai de 11 cidades
-# para 8 — menos requisicao por ciclo E cobrindo Manaus, que faltava.
+# job.py nao distingue Hibrido de Presencial na checagem de cidade (so
+# `modalidade` decide o caminho de remoto — ver _avaliar) — as duas
+# modalidades passam pela MESMA whitelist, entao "so Sao Paulo pra
+# hibrida" cobre presencial tambem, sem precisar de campo novo.
 CIDADES = [
     "Remoto",
-    # As seis do requisito
-    "Campina Grande",
-    "João Pessoa",
-    "Recife",
-    "Natal",
-    "Caruaru",
-    "Manaus",
-    # Mantidas por decisao da usuaria, alem do requisito minimo
-    "Maceió",
-    "Aracaju",
+    "São Paulo",
 ]
 
 # MEDIDO: "Data Analyst @ Lisboa" e "Analista de Datos @ Madrid" reprovavam
@@ -275,17 +257,21 @@ LOCATIONS_LINKEDIN = ["Brasil"]
 # como já visto com "LATAM"/"Latin America").
 LOCATIONS_LINKEDIN_REMOTO_APENAS = ["Argentina", "Chile", "México", "Colômbia", "Espanha", "Portugal"]
 
-# MEDIDO: a passada nacional acima (location="Brasil") varre o país inteiro
-# e só sobra o que bate em CIDADES depois do filtro — pra termo concorrido
-# em SP/RJ/MG (a maioria), as 3 páginas (30 resultados) nunca chegam numa
-# vaga de cidade menor do Nordeste, porque o volume dos polos maiores
-# ocupa tudo antes. Testado ao vivo: página 1 de "analista de dados" em
-# Brasil inteiro veio 100% São Paulo/Curitiba/Brasília, nenhuma do
-# Nordeste. Busca ESPECÍFICA por cidade não depende de volume nacional —
-# o próprio location= do LinkedIn já restringe o resultado à cidade, então
-# funciona mesmo quando SP/RJ dominam o termo. "Remoto" (item de CIDADES)
-# não é local de busca de verdade — sai da lista, já coberto pela passada
-# remoto=True de LOCATIONS_LINKEDIN acima.
+# MEDIDO (histórico, quando CIDADES tinha cidade do Nordeste): a passada
+# nacional (location="Brasil") varre o país inteiro e só sobra o que bate
+# em CIDADES depois do filtro — pra termo concorrido em SP/RJ/MG, as 3
+# páginas (30 resultados) nunca chegavam numa vaga de cidade menor do
+# Nordeste, porque o volume dos polos maiores ocupava tudo antes. Busca
+# ESPECÍFICA por cidade não depende de volume nacional — o próprio
+# location= do LinkedIn já restringe o resultado à cidade.
+#
+# Com CIDADES agora só "São Paulo" (ver requisito atualizado acima), essa
+# passada específica sobrepõe bastante a nacional (SP já domina o resultado
+# nacional por si só) — mantida mesmo assim por ser 1 cidade só, custo de 1
+# busca a mais por termo, e ainda cobre o que as 3 primeiras páginas da
+# passada nacional cortam. "Remoto" (item de CIDADES) não é local de busca
+# de verdade — sai da lista, já coberto pela passada remoto=True de
+# LOCATIONS_LINKEDIN acima.
 LOCATIONS_LINKEDIN_CIDADES_PRESENCIAL = [c for c in CIDADES if c != "Remoto"]
 
 # Mercado que a vaga remota precisa aceitar pra contar, quando o texto de
