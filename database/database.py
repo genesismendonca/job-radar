@@ -80,7 +80,11 @@ def _garantir_colunas_relevancia(conn):
     `perfil` (brasil/internacional) separa métrica por perfil; `motivo`
     (Job.motivo_aprovacao) explica no painel por que a vaga passou no
     filtro; `exploratoria` distingue vaga achada pelo eixo secundário
-    (Ibéria) — só pra render diferente, não muda nenhuma regra.
+    (Ibéria) — só pra render diferente, não muda nenhuma regra. `mercado_
+    confirmado` (Job.confirma_mercado, requisito atualizado 20/08) separa
+    vaga internacional com mercado Brasil/LATAM declarado EXPLICITAMENTE
+    no texto da que passou por não ter mercado nenhum declarado — os dois
+    blocos que o painel exibe separados.
     """
     colunas = [linha[1] for linha in conn.execute("PRAGMA table_info(vagas_vistas)")]
     if "relevancia" not in colunas:
@@ -91,6 +95,8 @@ def _garantir_colunas_relevancia(conn):
         conn.execute("ALTER TABLE vagas_vistas ADD COLUMN motivo TEXT")
     if "exploratoria" not in colunas:
         conn.execute("ALTER TABLE vagas_vistas ADD COLUMN exploratoria INTEGER")
+    if "mercado_confirmado" not in colunas:
+        conn.execute("ALTER TABLE vagas_vistas ADD COLUMN mercado_confirmado INTEGER")
 
 
 def _garantir_coluna_situacao(conn):
@@ -215,19 +221,23 @@ def salvar_vaga(job, perfil_chave: str = "", exploratoria: bool = False):
     """`perfil_chave` é o que permite o painel (ver painel/gerar_painel.py)
     separar vaga do perfil Brasil da do Internacional. `exploratoria` marca
     vaga achada pelo eixo secundário (Ibéria) — só afeta como o painel
-    rotula a linha, não muda nenhuma regra de filtro."""
+    rotula a linha, não muda nenhuma regra de filtro. `job.mercado_
+    confirmado` (ver Job.confirma_mercado) separa vaga internacional com
+    mercado Brasil/LATAM declarado explicitamente da que passou sem
+    mercado nenhum declarado."""
     with _conectar() as conn:
         conn.execute(
             """
             INSERT OR IGNORE INTO vagas_vistas
                 (id, titulo, empresa, local, link, site, chave_secundaria, publicado_em,
-                 modalidade, relevancia, perfil, motivo, exploratoria, situacao)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 modalidade, relevancia, perfil, motivo, exploratoria, situacao, mercado_confirmado)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 job.id, job.titulo, job.empresa, job.local, job.link, job.site,
                 job.chave_secundaria, job.publicado_em, job.modalidade,
                 job.relevancia, perfil_chave, job.motivo, int(exploratoria), "nova",
+                int(job.mercado_confirmado),
             ),
         )
 

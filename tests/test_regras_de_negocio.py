@@ -121,6 +121,26 @@ def test_intl_remoto_de_mercado_nao_aceito_e_rejeitado(local):
     assert not _vaga("Product Manager", local, "Remoto").combina_com(PERFIL_INTL.regras)
 
 
+@pytest.mark.parametrize("titulo", [
+    "Senior Product Manager - Remote (US)",
+    "US Remote Product Owner",
+    "Product Manager, Remote - United States",
+])
+def test_intl_remoto_de_mercado_nao_aceito_no_titulo_e_rejeitado(titulo):
+    """Requisito do usuario (21/08): "vagas que tenham no ... titulo
+    remote us ... sejam desconsideras" -- fonte as vezes so declara a
+    restricao geografica no TITULO, com `local` vazio ou com a sede da
+    empresa (sem relacao com o mercado de contratacao). Mesma rejeicao que
+    ja valia pra restricao escrita em `local`."""
+    assert not _vaga(titulo, "", "Remoto").combina_com(PERFIL_INTL.regras)
+
+
+def test_intl_remoto_de_mercado_aceito_no_titulo_e_aceito():
+    """Espelho do teste acima -- titulo que declara mercado ACEITO (nao
+    US/India/etc.) continua passando, mesmo sem nada em `local`."""
+    assert _vaga("Product Manager - Remote (Brazil)", "", "Remoto").combina_com(PERFIL_INTL.regras)
+
+
 def test_intl_titulo_hibrido_vence_a_classificacao_da_fonte():
     """O filtro nativo do LinkedIn as vezes marca como remota uma vaga que
     o proprio anuncio chama de hibrida -- o titulo vence."""

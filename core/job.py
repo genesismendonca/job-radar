@@ -773,6 +773,46 @@ def extrair_escopo_remoto(texto_local: str, modalidade: str = "") -> set[str]:
     return _mercados_correspondentes(candidato)
 
 
+# MEDIDO (requisito do usuário, 21/08): vaga com restrição geográfica
+# escrita no PRÓPRIO TÍTULO ("Senior Product Manager - Remote (US)", "US
+# Remote Product Owner") passava batido — extrair_escopo_remoto só olha
+# `local`, e fonte como LinkedIn Intl/WeWorkRemotely às vezes deixa a
+# restrição só no título, com `local` vindo vazio ou com a sede da
+# empresa (nada relacionado ao mercado de contratação).
+#
+# Não reaproveita a mesma extração de `local` direto: `local` é campo
+# dedicado, texto curto, quase só geografia — título tem cargo, senioridade,
+# nome de empresa, tecnologia, tudo junto ("Remote Product Manager for
+# fintech" não é vaga restrita a lugar nenhum, é só o cargo tendo a palavra
+# "remote"). Aplicar o mesmo fallback de "escopo desconhecido" do `local"
+# (que existe pra pegar país fora do dicionário) no título rejeitaria vaga
+# à toa por qualquer palavra vizinha de "remote" que não seja país nenhum.
+# Por isso aqui só reconhece mercado da lista FECHADA _MERCADOS_REMOTO
+# dentro de uma janela pequena ao redor de "remote"/"remoto" — nunca
+# inventa um escopo "desconhecido" a partir do título.
+_JANELA_TITULO_ESCOPO = 3  # nº de palavras ao redor de "remot..." no título
+
+
+def _escopo_do_titulo(titulo: str) -> set[str]:
+    """Mercado(s) que o TÍTULO declara perto da palavra remoto/remote, se
+    houver — ver MEDIDO acima. Conjunto vazio quando não há país conhecido
+    na janela (não é "escopo desconhecido", é "nada encontrado ali" —
+    título nunca rejeita vaga por palavra não mapeada)."""
+    titulo_norm = _normalizar(titulo).replace(".", "")
+    palavras = re.findall(r"[a-z0-9%]+", titulo_norm)
+    encontrados: set[str] = set()
+    for i, palavra in enumerate(palavras):
+        if not palavra.startswith("remot"):
+            continue
+        inicio = max(0, i - _JANELA_TITULO_ESCOPO)
+        fim = min(len(palavras), i + 1 + _JANELA_TITULO_ESCOPO)
+        janela = " ".join(palavras[inicio:i] + palavras[i + 1:fim])
+        for chave, nome in _MERCADOS_REMOTO.items():
+            if re.search(rf"\b{re.escape(chave)}\b", janela):
+                encontrados.add(nome)
+    return encontrados
+
+
 # Padrões de data confirmados ao vivo neste projeto: "Publicada em 11/08"
 # (Catho) e "Há 4 meses" / "Há 3 semanas" (LinkedIn, no card de busca).
 # Regex sobre o TEXTO INTEIRO do card, em vez de um seletor CSS por site —
@@ -813,13 +853,33 @@ def extrair_data_publicacao(texto_card: str) -> str:
 # Ordem importa: do mais específico pro mais genérico. Título não é
 # filtrado por senioridade — só é classificado, pra decidir isso na hora de
 # ler a notificação, não em deixar a vaga passar ou não.
+#
+# MEDIDO (20/08, pivô Dados/BI -> Produto): "manager"/"gerente" como sinal
+# de Liderança fazia sentido no domínio antigo (só aparecia numa vaga de
+# dados/BI se fosse cargo de gestão de verdade, ex: "Gerente de BI"). No
+# domínio de Produto isso quebra: "manager"/"gerente" são PARTE DO NOME DO
+# CARGO BASE ("Product Manager", "Gerente de Produto" — os próprios
+# KEYWORDS_CARGO_FORTE, ver config.py), não um sinal de senioridade acima
+# do padrão. Rodando contra as 543 vagas do primeiro ciclo real: 261 (48%)
+# classificavam "Liderança" só por causa disso — incluindo "Product
+# Manager" sem qualificador nenhum, claramente vaga de nível base, não de
+# gestão. Isso derrubava o score (_PESO_SENIORIDADE_ACIMA_DO_ALVO = -2) de
+# quase metade das vagas aprovadas sem relação nenhuma com senioridade
+# real. Exclui só o caso "é o próprio cargo base" (lookaround), sem tirar
+# o sinal de "Engineering Manager"/"Coordenador de Growth"/vaga que É de
+# gestão de verdade — essas continuam batendo normalmente.
 _NIVEIS_SENIORIDADE = [
     ("Estágio/Trainee", (r"estagi[ao]", r"estagio", r"trainee")),
     ("Júnior", (r"junior", r"jr\.?")),
     ("Pleno", (r"pleno", r"pl\.?")),
     ("Sênior", (r"senior", r"sr\.?", r"sênior")),
     ("Especialista", (r"especialista", r"specialist")),
-    ("Liderança", (r"coordenador", r"coordenadora", r"gerente", r"manager", r"head")),
+    ("Liderança", (
+        r"coordenador", r"coordenadora",
+        r"gerente(?! de produto)",
+        r"(?<!product )manager",
+        r"head",
+    )),
 ]
 
 
@@ -996,6 +1056,15 @@ class Job:
     # relevancia — "" até lá. Só pra aparecer na notificação; não
     # influencia filtro nem score.
     motivo: str = ""
+    # Requisito atualizado (20/08): o painel (ver painel/gerar_painel.py)
+    # separa vaga internacional em dois blocos — mercado Brasil/LATAM
+    # declarado EXPLICITAMENTE no texto vs. remota sem mercado declarado
+    # (passou por não ter base pra rejeitar, não por afirmar elegibilidade).
+    # Preenchido por confirma_mercado() junto de relevancia/motivo — False
+    # até lá. Só pra exibição, não influencia filtro nem score (mesmo dado
+    # que RegrasFiltro.mercados_remoto_aceitos já usa internamente pra
+    # aprovar/rejeitar, só que agora também persistido pro painel).
+    mercado_confirmado: bool = False
 
     def __post_init__(self):
         """Sobrepõe modalidade="Remoto" quando o TÍTULO contradiz (Híbrido/
@@ -1089,10 +1158,10 @@ class Job:
         base em RegrasFiltro.mercados_remoto_aceitos.
 
         `escopo_indefinido=True` (ver campo acima) força conjunto vazio
-        direto, sem nem chamar extrair_escopo_remoto — usado quando
-        `local` não representa mercado de contratação (ex: sede da empresa
-        no WeWorkRemotely), então não tem base nenhuma pra derivar escopo
-        dali, mesmo com modalidade="Remoto".
+        pro lado de `local`, sem nem chamar extrair_escopo_remoto — usado
+        quando `local` não representa mercado de contratação (ex: sede da
+        empresa no WeWorkRemotely), então não tem base nenhuma pra derivar
+        escopo dali, mesmo com modalidade="Remoto".
 
         Passa `self.modalidade` junto: fonte com filtro nativo (LinkedIn
         f_WT=2) confirma remoto por esse campo, não mais escrevendo
@@ -1100,10 +1169,15 @@ class Job:
         achava o separador "remot..." no texto e devolvia conjunto vazio
         (sem restrição) pra vaga remota confirmada, mesmo vinda dos
         EUA/Índia/etc.
+
+        União com _escopo_do_titulo(self.titulo) — MEDIDO (21/08):
+        restrição geográfica às vezes está só no TÍTULO ("Remote (US)"),
+        não em `local`; roda independente de escopo_indefinido, porque o
+        título de vaga do WeWorkRemotely é anúncio de verdade, nunca sede
+        de empresa (ver docstring do campo).
         """
-        if self.escopo_indefinido:
-            return set()
-        return extrair_escopo_remoto(self.local, self.modalidade)
+        escopo_local = set() if self.escopo_indefinido else extrair_escopo_remoto(self.local, self.modalidade)
+        return escopo_local | _escopo_do_titulo(self.titulo)
 
     def combina_com(self, regras: RegrasFiltro) -> bool:
         """Verifica se a vaga bate com pelo menos uma keyword E uma cidade/modalidade.
@@ -1307,8 +1381,8 @@ class Job:
         )
 
     def motivo_aprovacao(self, regras: RegrasFiltro) -> str:
-        """Qual sinal aprovou a vaga — só pra aparecer na notificação, não
-        influencia combina_com() nem pontuar_relevancia(). MEDIDO: a
+        """Qual sinal aprovou a vaga — só pra aparecer na notificação/painel,
+        não influencia combina_com() nem pontuar_relevancia(). MEDIDO: a
         mensagem nunca dizia qual regra bateu; via o resultado (vaga
         chegou), nunca a causa (por que ela passou) — sem isso não dá pra
         perceber, olhando as notificações, que uma keyword_ambiguo ou uma
@@ -1317,27 +1391,33 @@ class Job:
 
         Sinal de cargo (sempre um dos três — bate_keyword exige pelo menos
         um pra aprovar), mesma prioridade de pontuar_relevancia:
-        - "Cargo forte": bateu keyword inequívoca de dados/BI.
-        - "Cargo ambíguo + qualificador": cargo genérico (ex: "Business
-          Analyst") só aprovado por causa do qualificador junto.
-        - "Ferramenta + cargo": aprovou por ferramenta no título (ex:
-          "Power BI"), não por palavra de cargo.
-
-        Mais " · idioma sem mercado" quando a vaga é remota, o texto não
-        declarou mercado nenhum, e só passou no gate de geografia porque o
-        idioma apareceu no título — o caminho mais frágil dos três (ver
-        MEDIDO no item 03: foi exatamente esse caminho que deixava passar
-        vaga sem relação nenhuma com o mercado antes da correção)."""
+        - "Cargo forte": bateu keyword inequívoca de Produto.
+        - "Cargo ambíguo + qualificador": cargo genérico só aprovado por
+          causa do qualificador junto (perfil atual não usa este eixo —
+          ver KEYWORDS_CARGO_AMBIGUO vazio em config.py — mas o mecanismo
+          continua aqui pra quando algum perfil precisar dele).
+        - "Ferramenta + cargo": aprovou por ferramenta no título (idem,
+          perfil atual não usa — FERRAMENTAS_TITULO vazio).
+        """
         av = self._avaliar(regras)
         if av.bate_forte:
-            motivo = "Cargo forte"
-        elif av.bate_ambiguo:
-            motivo = "Cargo ambíguo + qualificador"
-        else:
-            motivo = "Ferramenta + cargo"
-        if av.bate_remoto and not av.escopos and av.idioma_bateu_titulo:
-            motivo += " · idioma sem mercado"
-        return motivo
+            return "Cargo forte"
+        if av.bate_ambiguo:
+            return "Cargo ambíguo + qualificador"
+        return "Ferramenta + cargo"
+
+    def confirma_mercado(self, regras: RegrasFiltro) -> bool:
+        """True quando o escopo remoto bateu EXPLICITAMENTE um mercado
+        aceito (ver RegrasFiltro.mercados_remoto_aceitos e escopos em
+        _avaliar) — False quando a vaga não é remota, ou é remota mas não
+        declara mercado nenhum no texto (passou pelo gate por não ter base
+        pra rejeitar, não por afirmar elegibilidade Brasil/LATAM).
+
+        Requisito atualizado (20/08): o painel separa vaga internacional
+        nesses dois grupos — "declara aceitar Brasil/LATAM" é um sinal bem
+        mais forte de que dá pra se candidatar de verdade do que "não
+        declarou nada, então não tem base pra recusar"."""
+        return self._avaliar(regras).mercado_confirmado
 
     def escopo_rejeitado_por_mercado(self, regras: RegrasFiltro) -> set[str] | None:
         """Só pra diagnóstico/log (ver utils/filtro.py) — refaz o mesmo

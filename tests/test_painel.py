@@ -15,6 +15,7 @@ import pytest
 from painel.gerar_painel import (
     _carregar_status,
     _carregar_vagas,
+    _categoria,
     _PADRAO_PUBLICACAO_ANTIGA,
     gerar_html,
 )
@@ -27,7 +28,8 @@ def conn():
         CREATE TABLE vagas_vistas (
             id TEXT PRIMARY KEY, titulo TEXT, empresa TEXT, local TEXT, link TEXT,
             site TEXT, perfil TEXT, modalidade TEXT, relevancia INTEGER, motivo TEXT,
-            exploratoria INTEGER, situacao TEXT, encontrada_em TEXT, publicado_em TEXT
+            exploratoria INTEGER, situacao TEXT, encontrada_em TEXT, publicado_em TEXT,
+            mercado_confirmado INTEGER
         )
     """)
     conexao.execute("CREATE TABLE metadados (chave TEXT PRIMARY KEY, valor TEXT)")
@@ -37,18 +39,20 @@ def conn():
 
 def _inserir_vaga(conn, **campos):
     padrao = dict(
-        id="id1", titulo="Analista de Dados", empresa="Empresa", local="São Paulo",
+        id="id1", titulo="Product Manager", empresa="Empresa", local="São Paulo",
         link="https://exemplo.com/vaga", site="LinkedIn", perfil="brasil",
         modalidade="Remoto", relevancia=7, motivo="Cargo forte", exploratoria=0,
         situacao="nova", encontrada_em="2026-08-20 10:00:00", publicado_em="",
+        mercado_confirmado=0,
     )
     padrao.update(campos)
     conn.execute(
         """INSERT INTO vagas_vistas
            (id, titulo, empresa, local, link, site, perfil, modalidade, relevancia,
-            motivo, exploratoria, situacao, encontrada_em, publicado_em)
+            motivo, exploratoria, situacao, encontrada_em, publicado_em, mercado_confirmado)
            VALUES (:id, :titulo, :empresa, :local, :link, :site, :perfil, :modalidade,
-                   :relevancia, :motivo, :exploratoria, :situacao, :encontrada_em, :publicado_em)""",
+                   :relevancia, :motivo, :exploratoria, :situacao, :encontrada_em, :publicado_em,
+                   :mercado_confirmado)""",
         padrao,
     )
     conn.commit()
@@ -61,7 +65,7 @@ def test_carrega_vaga_com_campos_basicos(conn):
     vagas = _carregar_vagas(conn)
     assert len(vagas) == 1
     assert vagas[0]["id"] == "abc"
-    assert vagas[0]["titulo"] == "Analista de Dados"
+    assert vagas[0]["titulo"] == "Product Manager"
     assert vagas[0]["exploratoria"] is False
 
 
@@ -69,6 +73,16 @@ def test_exploratoria_vira_booleano(conn):
     _inserir_vaga(conn, id="x", exploratoria=1)
     vagas = _carregar_vagas(conn)
     assert vagas[0]["exploratoria"] is True
+
+
+def test_mercado_confirmado_vira_booleano(conn):
+    _inserir_vaga(conn, id="x", mercado_confirmado=1)
+    vagas = _carregar_vagas(conn)
+    assert vagas[0]["mercado_confirmado"] is True
+
+    _inserir_vaga(conn, id="y", mercado_confirmado=0)
+    vagas = _carregar_vagas(conn)
+    assert [v for v in vagas if v["id"] == "y"][0]["mercado_confirmado"] is False
 
 
 def test_relevancia_nula_vira_zero(conn):
@@ -95,6 +109,91 @@ def test_ordena_mais_recente_primeiro(conn):
     _inserir_vaga(conn, id="nova", encontrada_em="2026-08-20 10:00:00")
     vagas = _carregar_vagas(conn)
     assert [v["id"] for v in vagas] == ["nova", "antiga"]
+
+
+# --------------------------------------------------------------- _categoria
+#
+# Requisito atualizado (20/08): "algumas vagas estão aparecendo na aba
+# internacional, mas são do BR" -- LinkedInIntlScraper busca por PAÍS
+# estrangeiro (LOCATIONS_INTL), mas o filtro nativo de remoto do LinkedIn
+# às vezes devolve vaga clara e exclusivamente brasileira mesmo assim. O
+# campo `perfil` salvo no banco só diz qual PIPELINE achou a vaga, não
+# onde ela é de verdade -- por isso _categoria reextrai o escopo (mesma
+# função usada em produção pro filtro) como double-check, pra qualquer
+# fonte, não só LinkedIn.
+
+def _vaga_base(**over):
+    padrao = dict(
+        perfil="internacional", local="", modalidade="Remoto", mercado_confirmado=False,
+    )
+    padrao.update(over)
+    return padrao
+
+
+def test_categoria_brasil_remoto():
+    assert _categoria(_vaga_base(perfil="brasil", modalidade="Remoto")) == "br-remoto"
+
+
+def test_categoria_brasil_hibrido():
+    assert _categoria(_vaga_base(perfil="brasil", modalidade="Híbrido")) == "br-hibrido"
+
+
+def test_categoria_brasil_presencial():
+    assert _categoria(_vaga_base(perfil="brasil", modalidade="Presencial")) == "br-presencial"
+
+
+def test_categoria_brasil_modalidade_vazia_vira_presencial():
+    """Fonte não declarou Híbrido nem Presencial -- leitura mais literal
+    de "sem sinal de regime misto" (~13% dos matches físicos no
+    histórico caem nesse caso)."""
+    assert _categoria(_vaga_base(perfil="brasil", modalidade="")) == "br-presencial"
+
+
+def test_categoria_internacional_mercado_confirmado():
+    assert _categoria(_vaga_base(local="Remote - Spain", mercado_confirmado=True)) == "intl-explicito"
+
+
+def test_categoria_internacional_sem_mercado():
+    assert _categoria(_vaga_base(local="Remote", mercado_confirmado=False)) == "intl-sem-mercado"
+
+
+def test_categoria_reclassifica_vaga_brasileira_achada_pelo_pipeline_internacional():
+    """MEDIDO (primeiro ciclo real, 20/08): "Porto Alegre, Rio Grande do
+    Sul, Brazil" com modalidade=Remoto, perfil=internacional -- claramente
+    uma vaga brasileira, achada só porque o LinkedIn devolveu ela pra uma
+    busca de país estrangeiro. Precisa virar br-remoto, não intl."""
+    vaga = _vaga_base(
+        perfil="internacional", local="Porto Alegre, Rio Grande do Sul, Brazil",
+        modalidade="Remoto", mercado_confirmado=False,
+    )
+    assert _categoria(vaga) == "br-remoto"
+
+
+def test_categoria_nao_reclassifica_vaga_de_mercado_multiplo():
+    """"Remote - Brazil/LATAM" aceita mais gente que só quem mora no
+    Brasil -- não é o mesmo caso de vaga EXCLUSIVAMENTE brasileira, então
+    continua internacional (o double-check só reclassifica quando o
+    escopo resolve só e exatamente pra Brasil)."""
+    vaga = _vaga_base(
+        perfil="internacional", local="Remote - Brazil/LATAM",
+        modalidade="Remoto", mercado_confirmado=True,
+    )
+    assert _categoria(vaga) == "intl-explicito"
+
+
+def test_categoria_double_check_vale_pra_qualquer_fonte():
+    """O double-check não é específico do LinkedIn -- roda pra qualquer
+    vaga perfil=internacional, seja qual for o `site`."""
+    vaga = _vaga_base(
+        perfil="internacional", local="Recife, PE, Brazil", modalidade="Remoto",
+    )
+    assert _categoria(vaga) == "br-remoto"
+
+
+def test_carregar_vagas_preenche_categoria(conn):
+    _inserir_vaga(conn, id="x", perfil="brasil", modalidade="Remoto")
+    vagas = _carregar_vagas(conn)
+    assert vagas[0]["categoria"] == "br-remoto"
 
 
 # --------------------------------------------------------- _carregar_status
